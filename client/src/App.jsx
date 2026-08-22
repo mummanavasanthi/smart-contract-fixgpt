@@ -25,7 +25,8 @@ function App() {
 
         try {
             const response = await fetch(
-                    "https://spectacular-fascination-production-139c.up.railway.app/analyze"                {
+                    "https://spectacular-fascination-production-139c.up.railway.app/analyze"      ,
+                     {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
