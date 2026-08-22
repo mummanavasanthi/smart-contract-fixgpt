@@ -11,7 +11,18 @@ const app = express();
 
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+// Allow the deployed Vercel frontend and local frontend
+app.use(
+    cors({
+        origin: [
+            "https://smart-contract-fixgpt.vercel.app",
+            "http://localhost:5173"
+        ],
+        methods: ["GET", "POST", "OPTIONS"],
+        allowedHeaders: ["Content-Type"]
+    })
+);
+
 app.use(express.json());
 
 app.get("/", (req, res) => {
