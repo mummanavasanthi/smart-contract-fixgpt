@@ -105,3 +105,66 @@ The system compares:
 
 ```text
 Before → After
+
+Paste this next:
+
+```markdown
+and reports:
+
+- Resolved findings
+- Remaining findings
+
+### Security Score
+
+The platform calculates a security score based on the detected Slither findings and their severity/impact.
+
+### Copy Fixed Code
+
+Users can copy the AI-generated Solidity remediation code directly from the application.
+
+### PDF Security Report
+
+Users can download a professional security report containing:
+
+- Audit summary
+- Security score
+- Finding summary
+- Security findings
+- AI security analysis
+- AI-generated fix
+- Re-analysis results
+- Resolved findings
+- Remaining findings
+- Security disclaimer
+
+---
+
+## System Architecture
+
+```text
+                    Smart Contract FixGPT
+                             │
+                             ▼
+                     React Frontend
+                             │
+                             ▼
+                    Node.js / Express
+                             │
+                 ┌───────────┴───────────┐
+                 │                       │
+                 ▼                       ▼
+              Slither                Gemini AI
+         Static Analysis         Explain + Generate Fix
+                 │                       │
+                 └───────────┬───────────┘
+                             ▼
+                    Corrected Solidity
+                             │
+                             ▼
+                     Slither Re-Analysis
+                             │
+                             ▼
+                    Before / After Compare
+                             │
+                             ▼
+                      Security Report
