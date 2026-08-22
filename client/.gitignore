@@ -1,0 +1,30 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Generated/temp Solidity files
+security-tools/temp-*.sol
+security-tools/contract-*.sol
+
+# Build files
+client/dist/
+server/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
