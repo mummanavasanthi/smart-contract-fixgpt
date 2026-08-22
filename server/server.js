@@ -11,19 +11,30 @@ const app = express();
 
 const PORT = process.env.PORT || 5000;
 
-// Allow the deployed Vercel frontend and local frontend
-app.use(
-    cors({
-        origin: [
-            "https://smart-contract-fixgpt.vercel.app",
-            "http://localhost:5173"
-        ],
-        methods: ["GET", "POST", "OPTIONS"],
-        allowedHeaders: ["Content-Type"]
-    })
-);
+// --------------------------------------------------
+// CORS
+// --------------------------------------------------
+
+const corsOptions = {
+    origin: [
+        "https://smart-contract-fixgpt.vercel.app",
+        "http://localhost:5173"
+    ],
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+    optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+
+// Explicitly handle browser preflight requests
+app.options(/.*/, cors(corsOptions));
 
 app.use(express.json());
+
+// --------------------------------------------------
+// HEALTH CHECK
+// --------------------------------------------------
 
 app.get("/", (req, res) => {
     res.json({
@@ -31,9 +42,17 @@ app.get("/", (req, res) => {
     });
 });
 
+// --------------------------------------------------
+// ROUTES
+// --------------------------------------------------
+
 app.use("/scan", scanRoute);
 app.use("/ai", aiRoute);
 app.use("/analyze", analyzeRoute);
+
+// --------------------------------------------------
+// SERVER
+// --------------------------------------------------
 
 app.listen(PORT, "0.0.0.0", () => {
     console.log(
