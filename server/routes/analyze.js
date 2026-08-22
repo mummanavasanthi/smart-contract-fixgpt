@@ -15,25 +15,33 @@ const SECURITY_TOOLS = path.resolve(
     "../../security-tools"
 );
 
-const SLITHER = path.join(
-    SECURITY_TOOLS,
-    ".venv",
-    "Scripts",
-    "slither.exe"
-);
+const isWindows =
+    process.platform === "win32";
 
-const SOLC = path.join(
-    SECURITY_TOOLS,
-    ".venv",
-    "Scripts",
-    "solc.exe"
-);
+const SLITHER = isWindows
+    ? path.join(
+        SECURITY_TOOLS,
+        ".venv",
+        "Scripts",
+        "slither.exe"
+    )
+    : "/opt/slither-venv/bin/slither";
+
+const SOLC = isWindows
+    ? path.join(
+        SECURITY_TOOLS,
+        ".venv",
+        "Scripts",
+        "solc.exe"
+    )
+    : "/usr/local/bin/solc";
 
 const scannerEnv = {
     ...process.env,
-    PATH: `${path.dirname(SOLC)};${process.env.PATH}`
+    PATH: isWindows
+        ? `${path.dirname(SOLC)};${process.env.PATH}`
+        : `/usr/local/bin:/opt/slither-venv/bin:${process.env.PATH}`
 };
-
 // ===============================
 // GEMINI
 // ===============================
