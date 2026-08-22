@@ -1,14 +1,8 @@
 # Smart Contract FixGPT
 
-> AI-powered Solidity smart contract vulnerability detection, remediation, re-analysis, and security reporting.
+### AI-Powered Smart Contract Vulnerability Detection and Secure Fix Generation
 
-[![Frontend](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61DAFB?logo=react&logoColor=white)](https://react.dev/)
-[![Backend](https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Smart Contracts](https://img.shields.io/badge/Web3-Solidity-363636?logo=solidity&logoColor=white)](https://soliditylang.org/)
-[![Security Analysis](https://img.shields.io/badge/Security-Slither-6C63FF)](https://github.com/crytic/slither)
-[![AI](https://img.shields.io/badge/AI-Google%20Gemini-4285F4)](https://ai.google.dev/)
-[![Deployment](https://img.shields.io/badge/Frontend-Vercel-black?logo=vercel)](https://vercel.com/)
-[![Deployment](https://img.shields.io/badge/Backend-Railway-0B0D0E)](https://railway.app/)
+Smart Contract FixGPT is a **Web3 + AI cybersecurity platform** that analyzes Solidity smart contracts, detects security issues, explains vulnerabilities using AI, generates remediation proposals, re-analyzes the fixed contract, and generates a security report.
 
 ---
 
@@ -22,124 +16,99 @@ https://github.com/mummanavasanthi/smart-contract-fixgpt
 
 ---
 
-## Table of Contents
+# 1. Project Overview
 
-- [Overview](#overview)
-- [Problem Statement](#problem-statement)
-- [Objectives](#objectives)
-- [Core Workflow](#core-workflow)
-- [Key Features](#key-features)
-- [System Architecture](#system-architecture)
-- [How It Works](#how-it-works)
-- [Technology Stack](#technology-stack)
-- [Project Structure](#project-structure)
-- [Supported Security Findings](#supported-security-findings)
-- [Testing](#testing)
-- [Example Results](#example-results)
-- [API](#api)
-- [Local Setup](#local-setup)
-- [Environment Variables](#environment-variables)
-- [Production Deployment](#production-deployment)
-- [Security Considerations](#security-considerations)
-- [Limitations](#limitations)
-- [Future Enhancements](#future-enhancements)
-- [Project Status](#project-status)
-- [Disclaimer](#disclaimer)
+Smart contracts are an important part of Web3 applications, but security vulnerabilities in smart contracts can lead to serious financial and operational risks.
+
+Smart Contract FixGPT combines:
+
+- Solidity smart contracts
+- Slither static security analysis
+- Google Gemini AI
+- React
+- Node.js and Express
+- Docker
+- Automated re-analysis
+- Security scoring
+- PDF security reporting
+
+The main workflow of the system is:
+
+**Detect → Explain → Fix → Re-Analyze → Report**
+
+The goal is to help developers understand smart-contract security issues and obtain AI-assisted remediation suggestions through a simple interface.
 
 ---
 
-## Overview
+# 2. Problem Statement
 
-Smart Contract FixGPT is a **Web3 + AI + Cybersecurity** platform designed to help developers identify and remediate vulnerabilities in Solidity smart contracts.
+Developers can use static-analysis tools to detect smart-contract vulnerabilities, but understanding and fixing those vulnerabilities can still require significant security knowledge.
 
-The platform combines:
+A typical security workflow may require developers to:
 
-- **Solidity** smart contracts
-- **Slither** static security analysis
-- **Google Gemini AI** for explanation and remediation
-- **Node.js + Express** backend services
-- **React + Vite** frontend
-- **Automated re-analysis** of AI-generated fixes
-- **Security scoring**
-- **Downloadable PDF security reports**
+1. Detect a vulnerability.
+2. Understand why it occurs.
+3. Understand its security impact.
+4. Find an appropriate remediation.
+5. Modify the contract.
+6. Test whether the issue has actually been resolved.
+7. Prepare a security report.
 
-The system follows a simple security workflow:
-
-> **Detect → Explain → Fix → Re-Analyze → Report**
-
-The goal is to make smart contract security analysis easier for Solidity and Web3 developers while keeping the remediation process practical and developer-friendly.
+Smart Contract FixGPT combines these activities into a single workflow.
 
 ---
 
-## Problem Statement
+# 3. Objectives
 
-Smart contracts are immutable programs that may control valuable digital assets. Security vulnerabilities in smart contracts can therefore lead to serious financial and operational consequences.
+The main objectives of the project are:
 
-Although static analysis tools can identify many common problems, developers may still need to understand:
-
-- What the vulnerability means
-- Why it is dangerous
-- What part of the contract is affected
-- How to remediate it safely
-- Whether the proposed fix actually removes the finding
-
-Smart Contract FixGPT addresses this gap by combining automated static analysis with AI-assisted explanation and remediation.
-
----
-
-## Objectives
-
-The project is designed to:
-
-1. Accept Solidity smart contract source code.
-2. Detect security findings using Slither.
-3. Display finding severity, confidence, function, and description.
-4. Use Gemini AI to explain actionable vulnerabilities.
-5. Generate corrected Solidity code.
-6. Re-analyze the generated contract using Slither.
-7. Compare the original and fixed results.
-8. Show resolved and remaining findings.
-9. Calculate a security score.
-10. Generate a downloadable security report.
+- Detect vulnerabilities in Solidity smart contracts.
+- Provide vulnerability severity and confidence information.
+- Explain security issues using AI.
+- Generate AI-assisted Solidity remediation code.
+- Re-analyze the generated code.
+- Compare original and fixed results.
+- Display resolved and remaining findings.
+- Calculate a security score.
+- Generate a downloadable security report.
 
 ---
 
-# Core Workflow
+# 4. Core Workflow
 
 ```text
-                Solidity Smart Contract
-                         │
-                         ▼
-                  Static Analysis
-                      Slither
-                         │
-                         ▼
-                  Security Findings
-                         │
-                ┌────────┴────────┐
-                │                 │
-                ▼                 ▼
-         Informational       Actionable
-           Findings           Findings
-                                │
-                                ▼
-                           Gemini AI
-                                │
-                    ┌───────────┴───────────┐
-                    │                       │
-                    ▼                       ▼
-              Explanation            Remediation
-                                      + Fixed Code
-                    │                       │
-                    └───────────┬───────────┘
-                                ▼
-                         Slither Re-Analysis
-                                │
-                                ▼
-                     Before / After Comparison
-                                │
-                                ▼
-                      Resolved / Remaining
-                                │
-                                ▼
-                         Security Report
+          Solidity Smart Contract
+                    |
+                    v
+          Slither Static Analysis
+                    |
+                    v
+             Security Findings
+                    |
+                    v
+              Gemini AI
+                    |
+          +---------+---------+
+          |                   |
+          v                   v
+     Explanation        Remediation
+                          Proposal
+                              |
+                              v
+                    Corrected Solidity
+                              |
+                              v
+                   Slither Re-Analysis
+                              |
+                              v
+                   Before / After Compare
+                              |
+                    +---------+---------+
+                    |                   |
+                    v                   v
+                Resolved            Remaining
+                    |                   |
+                    +---------+---------+
+                              |
+                              v
+                       Security Report
