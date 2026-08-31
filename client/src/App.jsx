@@ -39,11 +39,13 @@ function App() {
 
             const data = await response.json();
 
-            if (!response.ok || !data.success) {
-                throw new Error(
-                    data.message || "Analysis failed"
-                );
-            }
+           if (!response.ok || !data.success) {
+    throw new Error(
+        data.error ||
+        data.message ||
+        "Analysis failed"
+    );
+}
 
             setResult(data);
 
