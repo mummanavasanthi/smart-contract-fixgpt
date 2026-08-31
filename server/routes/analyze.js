@@ -198,11 +198,30 @@ Rules:
 - Do not claim the contract is completely secure.
 `;
 
-    const response =
-        await ai.models.generateContent({
+    let response;
+
+try {
+    response = await Promise.race([
+        ai.models.generateContent({
             model: "gemini-3.7-flash",
             contents: prompt
-        });
+        }),
+        new Promise((_, reject) =>
+            setTimeout(
+                () => reject(
+                    new Error("Gemini request timed out after 60 seconds")
+                ),
+                60000
+            )
+        )
+    ]);
+} catch (error) {
+    console.error("Gemini error:", error);
+
+    throw new Error(
+        `Gemini AI unavailable: ${error.message}`
+    );
+}
 
     const text = response.text;
 
