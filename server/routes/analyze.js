@@ -39,9 +39,10 @@ const SOLC = isWindows
 const scannerEnv = {
     ...process.env,
     PATH: isWindows
-        ? `${path.dirname(SOLC)};${process.env.PATH}`
-        : `/usr/local/bin:/opt/slither-venv/bin:${process.env.PATH}`
+        ? `${path.dirname(SOLC)};${process.env.PATH || ""}`
+        : `/usr/local/bin:/opt/slither-venv/bin:${process.env.PATH || ""}`
 };
+
 // ===============================
 // GEMINI
 // ===============================
@@ -50,30 +51,47 @@ const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY
 });
 
+// Use one Gemini model to keep behavior predictable.
+const GEMINI_MODEL = "gemini-3.6-flash";
+
+// Maximum time to wait for Gemini.
+const GEMINI_TIMEOUT_MS = 15000;
+
 // ===============================
 // RUN SLITHER
 // ===============================
 
 function runSlither(code) {
-
     return new Promise((resolve, reject) => {
 
-        const fileName = `temp-${Date.now()}.sol`;
+        const fileName =
+            `temp-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2)}.sol`;
 
         const filePath = path.join(
             SECURITY_TOOLS,
             fileName
         );
 
-        fs.writeFileSync(
-            filePath,
-            code,
-            "utf8"
-        );
+        // Create temporary Solidity file
+        try {
+            fs.writeFileSync(
+                filePath,
+                code,
+                "utf8"
+            );
+        } catch (writeError) {
+            return reject(writeError);
+        }
 
         execFile(
             SLITHER,
-            [filePath, "--json", "-"],
+            [
+                filePath,
+                "--json",
+                "-"
+            ],
             {
                 env: scannerEnv,
                 cwd: SECURITY_TOOLS,
@@ -82,9 +100,16 @@ function runSlither(code) {
             },
             (error, stdout, stderr) => {
 
-                // Delete temporary file
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
+                // Always remove temporary file
+                try {
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                    }
+                } catch (cleanupError) {
+                    console.error(
+                        "Temporary file cleanup failed:",
+                        cleanupError.message
+                    );
                 }
 
                 if (!stdout && !stderr) {
@@ -96,7 +121,8 @@ function runSlither(code) {
                     );
                 }
 
-                const output = stdout || stderr;
+                const output =
+                    stdout || stderr;
 
                 try {
 
@@ -108,32 +134,45 @@ function runSlither(code) {
 
                     const findings =
                         detectors.map((item) => ({
-                            name: item.check,
-                            severity: item.impact,
-                            confidence: item.confidence,
-                            description: item.description,
+
+                            name:
+                                item.check,
+
+                            severity:
+                                item.impact,
+
+                            confidence:
+                                item.confidence,
+
+                            description:
+                                item.description,
 
                             function:
                                 item.elements?.find(
-                                    e =>
-                                        e.type === "function"
+                                    (element) =>
+                                        element.type === "function"
                                 )?.name || null,
 
                             lines:
                                 item.elements?.flatMap(
-                                    e =>
-                                        e.source_mapping?.lines || []
+                                    (element) =>
+                                        element.source_mapping?.lines || []
                                 ) || [],
 
                             reference:
                                 item.reference
                         }));
 
-                    resolve(findings);
+                    return resolve(findings);
 
-                } catch (err) {
+                } catch (parseError) {
 
-                    reject(
+                    console.error(
+                        "Slither JSON parse error:",
+                        parseError.message
+                    );
+
+                    return reject(
                         new Error(
                             "Could not parse Slither JSON"
                         )
@@ -150,13 +189,37 @@ function runSlither(code) {
 
 function extractCode(text) {
 
-    const match =
+    if (!text) {
+        return "";
+    }
+
+    // Preferred Solidity code block
+    const solidityMatch =
         text.match(
             /```solidity\s*([\s\S]*?)```/i
         );
 
-    if (match) {
-        return match[1].trim();
+    if (solidityMatch) {
+        return solidityMatch[1].trim();
+    }
+
+    // Generic code block fallback
+    const genericMatch =
+        text.match(
+            /```\s*([\s\S]*?)```/i
+        );
+
+    if (genericMatch) {
+
+        const candidate =
+            genericMatch[1].trim();
+
+        if (
+            candidate.includes("pragma solidity") ||
+            candidate.includes("contract ")
+        ) {
+            return candidate;
+        }
     }
 
     return "";
@@ -168,67 +231,113 @@ function extractCode(text) {
 
 async function generateFix(code, finding) {
 
+    if (!process.env.GEMINI_API_KEY) {
+        throw new Error(
+            "GEMINI_API_KEY is not configured on the server."
+        );
+    }
+
     const prompt = `
-You are a Solidity smart contract security expert.
+You are a smart contract security expert.
 
-Original Solidity:
-${code}
+Analyze the following Solidity vulnerability.
 
-Slither finding:
-Detector: ${finding.name}
-Severity: ${finding.severity}
-Function: ${finding.function || "N/A"}
+Vulnerability:
+${finding.name}
+
+Severity:
+${finding.severity}
 
 Description:
 ${finding.description}
 
-Tasks:
+Solidity Code:
+${code}
 
-1. Explain the vulnerability.
-2. Explain the security impact.
-3. Give the recommended remediation.
-4. Generate the complete corrected Solidity contract.
+Provide:
 
-Rules:
-- Use only the provided Solidity code.
-- Do not invent functionality.
-- Preserve intended behavior.
-- Fix only the reported vulnerability.
-- Put the complete corrected contract inside ONE Solidity code block.
-- Do not claim the contract is completely secure.
+1. A simple explanation of the vulnerability.
+2. How to fix the vulnerability.
+3. The complete corrected Solidity contract.
+
+Return the complete corrected contract inside a Solidity code block.
+
+Do not omit any contract code.
+Do not return partial code.
 `;
 
-    let response;
-
-try {
-    response = await Promise.race([
-        ai.models.generateContent({
-            model: "gemini-3.6-flash",
-            contents: prompt
-        }),
-        new Promise((_, reject) =>
-            setTimeout(
-                () => reject(
-                    new Error("Gemini request timed out after 60 seconds")
-                ),
-                60000
-            )
-        )
-    ]);
-} catch (error) {
-    console.error("Gemini error:", error);
-
-    throw new Error(
-        `Gemini AI unavailable: ${error.message}`
+    console.log(
+        `Trying Gemini model: ${GEMINI_MODEL}`
     );
-}
 
-    const text = response.text;
+    const timeoutPromise =
+        new Promise((_, reject) => {
 
-    return {
-        explanation: text,
-        fixedCode: extractCode(text)
-    };
+            setTimeout(() => {
+
+                reject(
+                    new Error(
+                        `Gemini timeout after ${
+                            GEMINI_TIMEOUT_MS / 1000
+                        } seconds`
+                    )
+                );
+
+            }, GEMINI_TIMEOUT_MS);
+        });
+
+    const aiPromise =
+        ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: prompt
+        });
+
+    try {
+
+        const response =
+            await Promise.race([
+                aiPromise,
+                timeoutPromise
+            ]);
+
+        const text =
+            response?.text || "";
+
+        if (!text.trim()) {
+
+            throw new Error(
+                "Gemini returned an empty response."
+            );
+        }
+
+        const fixedCode =
+            extractCode(text);
+
+        if (!fixedCode) {
+
+            throw new Error(
+                "Gemini returned an explanation but no Solidity code block."
+            );
+        }
+
+        console.log(
+            "Gemini response received successfully."
+        );
+
+        return {
+            explanation: text,
+            fixedCode: fixedCode
+        };
+
+    } catch (error) {
+
+        console.error(
+            "Gemini fix generation failed:",
+            error.message
+        );
+
+        throw error;
+    }
 }
 
 // ===============================
@@ -239,14 +348,19 @@ router.post("/", async (req, res) => {
 
     try {
 
-        const { code } = req.body;
+        const { code } =
+            req.body;
 
-        // Validate input
+        // ===============================
+        // VALIDATE INPUT
+        // ===============================
+
         if (!code || !code.trim()) {
 
             return res.status(400).json({
                 success: false,
-                message: "Solidity code is required"
+                message:
+                    "Solidity code is required"
             });
         }
 
@@ -254,15 +368,31 @@ router.post("/", async (req, res) => {
         // 1. ORIGINAL SCAN
         // ===============================
 
+        console.log(
+            "Starting Slither analysis..."
+        );
+
         const originalFindings =
             await runSlither(code);
 
-        // No findings
-        if (originalFindings.length === 0) {
+        console.log(
+            `Slither completed. Findings: ${originalFindings.length}`
+        );
+
+        // ===============================
+        // NO FINDINGS
+        // ===============================
+
+        if (
+            originalFindings.length === 0
+        ) {
 
             return res.json({
+
                 success: true,
-                message: "No Slither findings detected.",
+
+                message:
+                    "No Slither findings detected.",
 
                 original: {
                     count: 0,
@@ -284,14 +414,14 @@ router.post("/", async (req, res) => {
 
         const actionableFindings =
             originalFindings.filter(
-                finding =>
+                (finding) =>
                     finding.severity === "High" ||
                     finding.severity === "Medium"
             );
 
         const informationalFindings =
             originalFindings.filter(
-                finding =>
+                (finding) =>
                     finding.severity === "Informational" ||
                     finding.severity === "Low"
             );
@@ -300,7 +430,9 @@ router.post("/", async (req, res) => {
         // 3. ONLY INFORMATIONAL FINDINGS
         // ===============================
 
-        if (actionableFindings.length === 0) {
+        if (
+            actionableFindings.length === 0
+        ) {
 
             return res.json({
 
@@ -310,8 +442,11 @@ router.post("/", async (req, res) => {
                     "Only informational findings were detected.",
 
                 original: {
-                    count: originalFindings.length,
-                    findings: originalFindings
+                    count:
+                        originalFindings.length,
+
+                    findings:
+                        originalFindings
                 },
 
                 actionable: [],
@@ -320,7 +455,9 @@ router.post("/", async (req, res) => {
                     informationalFindings,
 
                 ai: null,
+
                 fixedCode: null,
+
                 reanalysis: null
             });
         }
@@ -332,27 +469,96 @@ router.post("/", async (req, res) => {
         const finding =
             actionableFindings[0];
 
+        console.log(
+            `Primary vulnerability: ${finding.name} (${finding.severity})`
+        );
+
         // ===============================
         // 5. GEMINI FIX
         // ===============================
 
-        const aiResult =
-            await generateFix(
-                code,
-                finding
+        let aiResult = null;
+        let aiError = null;
+
+        try {
+
+            aiResult =
+                await generateFix(
+                    code,
+                    finding
+                );
+
+        } catch (error) {
+
+            console.error(
+                "Gemini remediation failed:",
+                error.message
             );
 
-        if (!aiResult.fixedCode) {
+            aiError =
+                error.message;
+        }
 
-            return res.status(500).json({
+        // ===============================
+        // GEMINI FAILED
+        // ===============================
 
-                success: false,
+        /*
+         * IMPORTANT:
+         *
+         * Slither detection is still valid even when Gemini
+         * is temporarily unavailable.
+         *
+         * Therefore, do NOT return HTTP 500 here.
+         *
+         * Return the vulnerability findings normally.
+         */
+
+        if (
+            !aiResult ||
+            !aiResult.fixedCode
+        ) {
+
+            console.warn(
+                "Gemini unavailable. Returning Slither results only."
+            );
+
+            return res.json({
+
+                success: true,
 
                 message:
-                    "Gemini did not return Solidity code.",
+                    "Security analysis completed. Gemini AI remediation is temporarily unavailable.",
 
-                explanation:
-                    aiResult.explanation
+                original: {
+                    count:
+                        originalFindings.length,
+
+                    findings:
+                        originalFindings
+                },
+
+                actionable:
+                    actionableFindings,
+
+                informational:
+                    informationalFindings,
+
+                ai: {
+
+                    vulnerability:
+                        finding.name,
+
+                    explanation:
+                        "Slither successfully detected the vulnerability, but Gemini could not generate an automated fix at this time.",
+
+                    error:
+                        aiError
+                },
+
+                fixedCode: null,
+
+                reanalysis: null
             });
         }
 
@@ -360,10 +566,18 @@ router.post("/", async (req, res) => {
         // 6. RE-SCAN FIXED CODE
         // ===============================
 
+        console.log(
+            "Re-analyzing Gemini fixed code..."
+        );
+
         const fixedFindings =
             await runSlither(
                 aiResult.fixedCode
             );
+
+        console.log(
+            `Re-analysis completed. Findings: ${fixedFindings.length}`
+        );
 
         // ===============================
         // 7. COMPARE RESULTS
@@ -372,34 +586,39 @@ router.post("/", async (req, res) => {
         const before =
             new Set(
                 originalFindings.map(
-                    f => f.name
+                    (f) => f.name
                 )
             );
 
         const after =
             new Set(
                 fixedFindings.map(
-                    f => f.name
+                    (f) => f.name
                 )
             );
 
         const resolved =
             [...before].filter(
-                name => !after.has(name)
+                (name) =>
+                    !after.has(name)
             );
 
         const remaining =
             [...after];
 
         // ===============================
-        // 8. RESPONSE
+        // 8. FINAL RESPONSE
         // ===============================
 
-        res.json({
+        return res.json({
 
             success: true,
 
+            message:
+                "Security analysis completed successfully.",
+
             original: {
+
                 count:
                     originalFindings.length,
 
@@ -414,6 +633,7 @@ router.post("/", async (req, res) => {
                 informationalFindings,
 
             ai: {
+
                 vulnerability:
                     finding.name,
 
@@ -447,7 +667,7 @@ router.post("/", async (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
 
             success: false,
 
@@ -459,5 +679,9 @@ router.post("/", async (req, res) => {
         });
     }
 });
+
+// ===============================
+// EXPORT
+// ===============================
 
 module.exports = router;
