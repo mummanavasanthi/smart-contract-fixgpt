@@ -14,12 +14,13 @@ RUN cd /app/server && npm install --omit=dev
 RUN python3 -m venv /opt/slither-venv && \
     /opt/slither-venv/bin/pip install --upgrade pip && \
     /opt/slither-venv/bin/pip install slither-analyzer
-
+RUN echo "Installing Solidity compiler 0.8.24"
 # Solidity compiler
-RUN curl -L \
+RUN curl -fL \
     https://github.com/ethereum/solidity/releases/download/v0.8.24/solc-static-linux \
     -o /usr/local/bin/solc && \
-    chmod +x /usr/local/bin/solc
+    chmod +x /usr/local/bin/solc && \
+    /usr/local/bin/solc --version
 
 # Application
 COPY server ./server
