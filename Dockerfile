@@ -17,7 +17,7 @@ RUN python3 -m venv /opt/slither-venv && \
 
 # Solidity compiler
 RUN curl -L \
-    https://github.com/ethereum/solidity/releases/download/v0.8.20/solc-static-linux \
+    https://github.com/ethereum/solidity/releases/download/v0.8.24/solc-static-linux \
     -o /usr/local/bin/solc && \
     chmod +x /usr/local/bin/solc
 
