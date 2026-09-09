@@ -238,131 +238,131 @@ ${code}
 Provide:
 
 1. A simple explanation of the vulnerability.
-2. How to fix the vulnerability.
-3. The complete corrected Solidity contract.
+2. The security impact.
+3. How to fix the vulnerability.
+4. The complete corrected Solidity contract.
 
-Return the complete corrected contract inside a Solidity code block.
-
-Do not omit any contract code.
-Do not return partial code.
+Important:
+- Return the FULL corrected Solidity contract.
+- Do not return partial code.
+- Do not omit functions.
+- Put the corrected contract inside a Solidity code block.
 `;
 
-    const model = "gemini-3.6-flash";
+    const models = [
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.6-flash"
+    ];
 
-    // Retry temporary Gemini failures.
-    const maxAttempts = 3;
-
-    // Wait 2s, then 4s, then 8s between attempts.
     const delays = [2000, 4000, 8000];
 
     let lastError = null;
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    for (const model of models) {
 
-        try {
+        for (let attempt = 1; attempt <= 2; attempt++) {
 
-            console.log(
-                `Gemini attempt ${attempt}/${maxAttempts} using ${model}`
-            );
-
-            const timeoutPromise =
-                new Promise((_, reject) => {
-
-                    setTimeout(() => {
-
-                        reject(
-                            new Error(
-                                "Gemini request timed out after 20 seconds."
-                            )
-                        );
-
-                    }, 20000);
-                });
-
-            const aiPromise =
-                ai.models.generateContent({
-                    model,
-                    contents: prompt
-                });
-
-            const response =
-                await Promise.race([
-                    aiPromise,
-                    timeoutPromise
-                ]);
-
-            const text =
-                response?.text || "";
-
-            if (!text.trim()) {
-                throw new Error(
-                    "Gemini returned an empty response."
-                );
-            }
-
-            const fixedCode =
-                extractCode(text);
-
-            if (!fixedCode) {
-                throw new Error(
-                    "Gemini returned no Solidity code block."
-                );
-            }
-
-            console.log(
-                "Gemini fix generated successfully."
-            );
-
-            return {
-                explanation: text,
-                fixedCode: fixedCode
-            };
-
-        } catch (error) {
-
-            lastError = error;
-
-            console.error(
-                `Gemini attempt ${attempt} failed:`,
-                error.message
-            );
-
-            // Stop immediately for permanent/client errors.
-            const message =
-                String(error.message || "").toLowerCase();
-
-            const permanentError =
-                message.includes("api key") ||
-                message.includes("authentication") ||
-                message.includes("permission") ||
-                message.includes("not found") ||
-                message.includes("invalid");
-
-            if (permanentError) {
-                break;
-            }
-
-            // Retry only if attempts remain.
-            if (attempt < maxAttempts) {
+            try {
 
                 console.log(
-                    `Waiting ${delays[attempt - 1] / 1000}s before retry...`
+                    `Trying Gemini model: ${model}, attempt ${attempt}/2`
                 );
 
-                await new Promise(
-                    (resolve) =>
-                        setTimeout(
-                            resolve,
-                            delays[attempt - 1]
-                        )
+                const timeoutPromise =
+                    new Promise((_, reject) => {
+                        setTimeout(() => {
+                            reject(
+                                new Error(
+                                    `Gemini timeout after 20 seconds (${model})`
+                                )
+                            );
+                        }, 20000);
+                    });
+
+                const aiPromise =
+                    ai.models.generateContent({
+                        model,
+                        contents: prompt
+                    });
+
+                const response =
+                    await Promise.race([
+                        aiPromise,
+                        timeoutPromise
+                    ]);
+
+                const text =
+                    response?.text || "";
+
+                if (!text.trim()) {
+                    throw new Error(
+                        "Gemini returned an empty response."
+                    );
+                }
+
+                const fixedCode =
+                    extractCode(text);
+
+                if (!fixedCode) {
+                    throw new Error(
+                        "Gemini returned no Solidity code block."
+                    );
+                }
+
+                console.log(
+                    `Gemini success: ${model}`
                 );
+
+                return {
+                    explanation: text,
+                    fixedCode: fixedCode
+                };
+
+            } catch (error) {
+
+                lastError = error;
+
+                console.error(
+                    `Gemini failed (${model}, attempt ${attempt}):`,
+                    error.message
+                );
+
+                const message =
+                    String(error.message || "").toLowerCase();
+
+                const permanentError =
+                    message.includes("api key") ||
+                    message.includes("authentication") ||
+                    message.includes("permission denied") ||
+                    message.includes("invalid argument") ||
+                    message.includes("not found");
+
+                if (permanentError) {
+                    break;
+                }
+
+                if (attempt === 1) {
+                    await new Promise(
+                        (resolve) =>
+                            setTimeout(
+                                resolve,
+                                delays[
+                                    Math.min(
+                                        models.indexOf(model),
+                                        delays.length - 1
+                                    )
+                                ]
+                            )
+                    );
+                }
             }
         }
     }
 
     throw new Error(
-        `Gemini failed after ${maxAttempts} attempts. Last error: ${
-            lastError?.message || "Unknown Gemini error"
+        `All Gemini models failed. Last error: ${
+            lastError?.message || "Unknown error"
         }`
     );
 }
