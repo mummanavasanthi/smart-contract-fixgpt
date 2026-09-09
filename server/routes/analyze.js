@@ -63,6 +63,7 @@ const GEMINI_TIMEOUT_MS = 15000;
 
 function runSlither(code) {
     return new Promise((resolve, reject) => {
+
         const fileName =
             `temp-${Date.now()}-${Math.random()
                 .toString(36)
@@ -85,35 +86,6 @@ function runSlither(code) {
             );
         }
 
-        let finished = false;
-
-        const cleanup = () => {
-            try {
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
-                }
-            } catch (error) {
-                console.error(
-                    "Temporary file cleanup failed:",
-                    error.message
-                );
-            }
-        };
-
-        const finishReject = (error) => {
-            if (finished) return;
-            finished = true;
-            cleanup();
-            reject(error);
-        };
-
-        const finishResolve = (value) => {
-            if (finished) return;
-            finished = true;
-            cleanup();
-            resolve(value);
-        };
-
         execFile(
             SLITHER,
             [
@@ -122,7 +94,10 @@ function runSlither(code) {
                 "-"
             ],
             {
-                env: scannerEnv,
+                env: {
+                    ...scannerEnv,
+                    SOLC_VERSION: "0.8.24"
+                },
                 cwd: SECURITY_TOOLS,
                 windowsHide: true,
                 maxBuffer: 20 * 1024 * 1024,
@@ -130,166 +105,105 @@ function runSlither(code) {
             },
             (error, stdout, stderr) => {
 
-                // Slither can write useful information to stderr,
-                // so do NOT hide it.
-
-                if (error) {
-                    console.error(
-                        "===== SLITHER ERROR ====="
-                    );
-
-                    console.error(
-                        "Exit code:",
-                        error.code
-                    );
-
-                    console.error(
-                        "Signal:",
-                        error.signal
-                    );
-
-                    console.error(
-                        "STDOUT:",
-                        stdout || "(empty)"
-                    );
-
-                    console.error(
-                        "STDERR:",
-                        stderr || "(empty)"
-                    );
-
-                    console.error(
-                        "========================="
-                    );
-
-                    return finishReject(
-                        new Error(
-                            `Slither analysis failed.\n` +
-                            `Exit code: ${error.code ?? "unknown"}\n` +
-                            `STDERR: ${stderr || "(empty)"}`
-                        )
-                    );
-                }
-
-                if (!stdout || !stdout.trim()) {
-                    return finishReject(
-                        new Error(
-                            `Slither returned no JSON output. ${stderr || ""}`
-                        )
-                    );
-                }
-
+                // Always remove temporary file
                 try {
-                    const result =
-                        JSON.parse(stdout);
-
-                    const detectors =
-                        result?.results?.detectors || [];
-
-                    const findings =
-                        detectors.map((item) => ({
-                            name: item.check,
-                            severity: item.impact,
-                            confidence: item.confidence,
-                            description: item.description,
-
-                            function:
-                                item.elements?.find(
-                                    (element) =>
-                                        element.type === "function"
-                                )?.name || null,
-
-                            lines:
-                                item.elements?.flatMap(
-                                    (element) =>
-                                        element.source_mapping?.lines || []
-                                ) || [],
-
-                            reference:
-                                item.reference
-                        }));
-
-                    console.log(
-                        `Slither completed successfully. Findings: ${findings.length}`
-                    );
-
-                    return finishResolve(findings);
-
-                } catch (parseError) {
-
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                    }
+                } catch (cleanupError) {
                     console.error(
-                        "===== SLITHER JSON PARSE ERROR ====="
+                        "Temporary file cleanup failed:",
+                        cleanupError.message
                     );
+                }
 
-                    console.error(
-                        "Parse error:",
-                        parseError.message
-                    );
+                console.log("========== SLITHER DEBUG ==========");
+                console.log("Exit code:", error?.code);
+                console.log("Signal:", error?.signal);
+                console.log("Killed:", error?.killed);
+                console.log("STDOUT:", stdout || "(empty)");
+                console.log("STDERR:", stderr || "(empty)");
+                console.log("===================================");
 
-                    console.error(
-                        "STDOUT:",
-                        stdout || "(empty)"
-                    );
+                // First try to parse stdout as Slither JSON.
+                // Slither uses --json - to write JSON to stdout.
+                if (stdout && stdout.trim()) {
+                    try {
+                        const result = JSON.parse(stdout);
 
-                    console.error(
-                        "STDERR:",
-                        stderr || "(empty)"
-                    );
+                        // Slither JSON can report an internal error
+                        if (result?.success === false) {
+                            return reject(
+                                new Error(
+                                    result.error ||
+                                    "Slither reported an analysis error."
+                                )
+                            );
+                        }
 
-                    console.error(
-                        "===================================="
-                    );
+                        const detectors =
+                            result?.results?.detectors || [];
 
-                    return finishReject(
+                        const findings =
+                            detectors.map((item) => ({
+                                name: item.check,
+                                severity: item.impact,
+                                confidence: item.confidence,
+                                description: item.description,
+
+                                function:
+                                    item.elements?.find(
+                                        (element) =>
+                                            element.type === "function"
+                                    )?.name || null,
+
+                                lines:
+                                    item.elements?.flatMap(
+                                        (element) =>
+                                            element.source_mapping?.lines || []
+                                    ) || [],
+
+                                reference:
+                                    item.reference
+                            }));
+
+                        console.log(
+                            `Slither completed. Findings: ${findings.length}`
+                        );
+
+                        return resolve(findings);
+
+                    } catch (parseError) {
+                        console.error(
+                            "Could not parse Slither stdout as JSON:",
+                            parseError.message
+                        );
+                    }
+                }
+
+                // If JSON was not returned, expose the real process error.
+                if (error) {
+                    return reject(
                         new Error(
-                            "Could not parse Slither JSON output."
+                            [
+                                `Slither process failed.`,
+                                `Exit code: ${error.code ?? "unknown"}`,
+                                `Signal: ${error.signal ?? "none"}`,
+                                `STDERR: ${stderr || "(empty)"}`,
+                                `STDOUT: ${stdout || "(empty)"}`
+                            ].join("\n")
                         )
                     );
                 }
+
+                return reject(
+                    new Error(
+                        "Slither returned no usable output."
+                    )
+                );
             }
         );
     });
-}
-// ===============================
-// EXTRACT SOLIDITY FROM GEMINI
-// ===============================
-
-function extractCode(text) {
-
-    if (!text) {
-        return "";
-    }
-
-    // Preferred Solidity code block
-    const solidityMatch =
-        text.match(
-            /```solidity\s*([\s\S]*?)```/i
-        );
-
-    if (solidityMatch) {
-        return solidityMatch[1].trim();
-    }
-
-    // Generic code block fallback
-    const genericMatch =
-        text.match(
-            /```\s*([\s\S]*?)```/i
-        );
-
-    if (genericMatch) {
-
-        const candidate =
-            genericMatch[1].trim();
-
-        if (
-            candidate.includes("pragma solidity") ||
-            candidate.includes("contract ")
-        ) {
-            return candidate;
-        }
-    }
-
-    return "";
 }
 
 // ===============================
