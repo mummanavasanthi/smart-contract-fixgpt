@@ -2,9 +2,8 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
-const { GoogleGenAI } = require("@google/genai");
-
-const router = express.Router();
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const router = express.Router(); 
 
 // ===============================
 // PATHS
@@ -47,12 +46,8 @@ const scannerEnv = {
 // GEMINI
 // ===============================
 
-const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY
-});
-
 // Use one Gemini model to keep behavior predictable.
-const GEMINI_MODEL = "gemini-3.6-flash";
+const GEMINI_MODEL = "gemini-3.6-flash"; 
 
 // Maximum time to wait for Gemini.
 const GEMINI_TIMEOUT_MS = 15000;
@@ -210,6 +205,44 @@ function runSlither(code) {
 // GEMINI FIX
 // ===============================
 
+function extractCode(text) {
+    if (!text) return null;
+
+    // Try Solidity markdown code block first
+    const solidityBlock = text.match(
+        /```solidity\s*([\s\S]*?)```/i
+    );
+
+    if (solidityBlock) {
+        return solidityBlock[1].trim();
+    }
+
+    // Try generic markdown code block
+    const genericBlock = text.match(
+        /```\s*([\s\S]*?)```/
+    );
+
+    if (genericBlock) {
+        const content = genericBlock[1].trim();
+
+        if (
+            content.includes("pragma solidity") ||
+            content.includes("contract ")
+        ) {
+            return content;
+        }
+    }
+
+    // Fallback: Gemini returned plain Solidity
+    const pragmaIndex = text.indexOf("pragma solidity");
+
+    if (pragmaIndex !== -1) {
+        return text.substring(pragmaIndex).trim();
+    }
+
+    return null;
+}
+
 async function generateFix(code, finding) {
 
     if (!process.env.GEMINI_API_KEY) {
@@ -219,11 +252,11 @@ async function generateFix(code, finding) {
     }
 
     const prompt = `
-You are a smart contract security expert.
+You are a Solidity security expert.
 
-Analyze the following Solidity vulnerability.
+Analyze the following vulnerable Solidity contract.
 
-Vulnerability:
+Detected vulnerability:
 ${finding.name}
 
 Severity:
@@ -232,21 +265,27 @@ ${finding.severity}
 Description:
 ${finding.description}
 
-Solidity Code:
+Vulnerable Solidity code:
+
 ${code}
 
-Provide:
+Your task:
+1. Explain the vulnerability briefly.
+2. Explain the security impact.
+3. Fix the vulnerability.
+4. Preserve the original contract functionality.
+5. Return the complete corrected Solidity contract.
+6. Do not remove existing functions or important functionality.
 
-1. A simple explanation of the vulnerability.
-2. The security impact.
-3. How to fix the vulnerability.
-4. The complete corrected Solidity contract.
+Return your response in this format:
 
-Important:
-- Return the FULL corrected Solidity contract.
-- Do not return partial code.
-- Do not omit functions.
-- Put the corrected contract inside a Solidity code block.
+EXPLANATION:
+Brief explanation of the vulnerability and security impact.
+
+FIXED CODE:
+Complete corrected Solidity contract.
+
+The corrected contract may be inside a Solidity code block or returned as plain Solidity code.
 `;
 
     const models = [
@@ -259,9 +298,13 @@ Important:
 
     let lastError = null;
 
-    for (const model of models) {
+    for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
+
+        const model = models[modelIndex];
 
         for (let attempt = 1; attempt <= 2; attempt++) {
+
+            let timeoutId = null;
 
             try {
 
@@ -269,44 +312,69 @@ Important:
                     `Trying Gemini model: ${model}, attempt ${attempt}/2`
                 );
 
-                const timeoutPromise =
-                    new Promise((_, reject) => {
-                        setTimeout(() => {
-                            reject(
-                                new Error(
-                                    `Gemini timeout after 20 seconds (${model})`
-                                )
-                            );
-                        }, 20000);
-                    });
+                const timeoutPromise = new Promise((_, reject) => {
 
-                const aiPromise =
-                    ai.models.generateContent({
-                        model,
-                        contents: prompt
-                    });
+                    timeoutId = setTimeout(() => {
+                        reject(
+                            new Error(
+                                `Gemini timeout after 20 seconds (${model})`
+                            )
+                        );
+                    }, 20000);
+ 
+                });
 
-                const response =
-                    await Promise.race([
-                        aiPromise,
-                        timeoutPromise
-                    ]);
+                const genAI = new GoogleGenerativeAI(
+                    process.env.GEMINI_API_KEY
+                );
+
+                const modelClient = genAI.getGenerativeModel({
+                    model
+                });
+
+                const aiPromise = modelClient.generateContent(prompt);
+
+                const response = await Promise.race([
+                    aiPromise,
+                    timeoutPromise
+                ]);
 
                 const text =
-                    response?.text || "";
+                    response?.response?.text?.() || "";
 
-                if (!text.trim()) {
+                if (!text) {
                     throw new Error(
                         "Gemini returned an empty response."
                     );
                 }
 
-                const fixedCode =
-                    extractCode(text);
+                console.log(
+                    `Gemini response received from ${model}`
+                );
+
+                /*
+                 * Extract Solidity code.
+                 *
+                 * First try the existing extractCode() function.
+                 * If Gemini did not use a markdown code block,
+                 * fall back to detecting the Solidity contract directly.
+                 */
+                let fixedCode = extractCode(text);
+
+                if (!fixedCode) {
+
+                    const solidityMatch = text.match(
+                        /(?:\/\/ SPDX-License-Identifier:[\s\S]*?)?pragma\s+solidity[\s\S]*?contract\s+\w+[\s\S]*/
+                    );
+
+                    if (solidityMatch) {
+                        fixedCode = solidityMatch[0].trim();
+                    }
+                }
 
                 if (!fixedCode) {
                     throw new Error(
-                        "Gemini returned no Solidity code block."
+                        "Gemini returned a response but no corrected Solidity contract could be extracted."
                     );
                 }
 
@@ -316,10 +384,14 @@ Important:
 
                 return {
                     explanation: text,
-                    fixedCode: fixedCode
+                    fixedCode
                 };
 
             } catch (error) {
+
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
 
                 lastError = error;
 
@@ -335,27 +407,28 @@ Important:
                     message.includes("api key") ||
                     message.includes("authentication") ||
                     message.includes("permission denied") ||
-                    message.includes("invalid argument") ||
-                    message.includes("not found");
+                    message.includes("invalid argument");
 
                 if (permanentError) {
                     break;
                 }
 
                 if (attempt === 1) {
-                    await new Promise(
-                        (resolve) =>
-                            setTimeout(
-                                resolve,
-                                delays[
-                                    Math.min(
-                                        models.indexOf(model),
-                                        delays.length - 1
-                                    )
-                                ]
-                            )
+
+                    await new Promise(resolve =>
+                        setTimeout(
+                            resolve,
+                            delays[
+                                Math.min(
+                                    modelIndex,
+                                    delays.length - 1
+                                )
+                            ]
+                        )
                     );
+
                 }
+
             }
         }
     }
