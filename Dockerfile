@@ -14,12 +14,18 @@ RUN cd /app/server && npm install --omit=dev
 RUN python3 -m venv /opt/slither-venv && \
     /opt/slither-venv/bin/pip install --upgrade pip && \
     /opt/slither-venv/bin/pip install slither-analyzer
-RUN echo "Installing Solidity compiler 0.8.24"
-# Solidity compiler
-RUN curl -fL \
-    https://github.com/ethereum/solidity/releases/download/v0.8.24/solc-static-linux \
-    -o /usr/local/bin/solc && \
-    chmod +x /usr/local/bin/solc && \
+
+# Solidity compilers
+RUN mkdir -p /opt/solc-versions && \
+    curl -fL https://github.com/ethereum/solidity/releases/download/v0.4.26/solc-static-linux -o /opt/solc-versions/solc-0.4.26 && \
+    curl -fL https://github.com/ethereum/solidity/releases/download/v0.5.17/solc-static-linux -o /opt/solc-versions/solc-0.5.17 && \
+    curl -fL https://github.com/ethereum/solidity/releases/download/v0.6.12/solc-static-linux -o /opt/solc-versions/solc-0.6.12 && \
+    curl -fL https://github.com/ethereum/solidity/releases/download/v0.7.6/solc-static-linux -o /opt/solc-versions/solc-0.7.6 && \
+    curl -fL https://github.com/ethereum/solidity/releases/download/v0.8.20/solc-static-linux -o /opt/solc-versions/solc-0.8.20 && \
+    curl -fL https://github.com/ethereum/solidity/releases/download/v0.8.24/solc-static-linux -o /opt/solc-versions/solc-0.8.24 && \
+    curl -fL https://github.com/ethereum/solidity/releases/download/v0.8.36/solc-static-linux -o /opt/solc-versions/solc-0.8.36 && \
+    chmod +x /opt/solc-versions/solc-* && \
+    ln -sf /opt/solc-versions/solc-0.8.24 /usr/local/bin/solc && \
     /usr/local/bin/solc --version
 
 # Application

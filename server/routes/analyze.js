@@ -1,7 +1,7 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const { execFile } = require("child_process");
+const { execFile, execFileSync } = require("child_process");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const router = express.Router(); 
 
@@ -55,6 +55,93 @@ const GEMINI_TIMEOUT_MS = 15000;
 // ===============================
 // RUN SLITHER
 // ===============================
+function detectSolidityVersion(code) {
+    const match = code.match(
+        /pragma\s+solidity\s+([^;]+);/i
+    );
+
+    if (!match) {
+        return "0.8.24";
+    }
+
+    const pragma = match[1].trim();
+
+    // Exact version: pragma solidity 0.8.20;
+    const exact = pragma.match(
+        /^(\d+)\.(\d+)\.(\d+)$/
+    );
+
+    if (exact) {
+        const version = `${exact[1]}.${exact[2]}.${exact[3]}`;
+
+        const installedVersions = [
+            "0.4.26",
+            "0.5.17",
+            "0.6.12",
+            "0.7.6",
+            "0.8.20",
+            "0.8.24",
+            "0.8.36"
+        ];
+
+        if (installedVersions.includes(version)) {
+            return version;
+        }
+
+        // If the exact patch version isn't installed,
+        // choose a compatible fallback by major.minor.
+        const majorMinor =
+            `${exact[1]}.${exact[2]}`;
+
+        const fallbackVersions = {
+            "0.4": "0.4.26",
+            "0.5": "0.5.17",
+            "0.6": "0.6.12",
+            "0.7": "0.7.6",
+            "0.8": "0.8.24"
+        };
+
+        return (
+            fallbackVersions[majorMinor] ||
+            "0.8.24"
+        );
+    }
+
+    // Version ranges such as ^0.5.0
+    if (pragma.includes("0.4.")) {
+        return "0.4.26";
+    }
+
+    if (pragma.includes("0.5.")) {
+        return "0.5.17";
+    }
+
+    if (pragma.includes("0.6.")) {
+        return "0.6.12";
+    }
+
+    if (pragma.includes("0.7.")) {
+        return "0.7.6";
+    }
+
+    if (pragma.includes("0.8.36")) {
+        return "0.8.36";
+    }
+
+    if (pragma.includes("0.8.20")) {
+        return "0.8.20";
+    }
+
+    if (pragma.includes("0.8.24")) {
+        return "0.8.24";
+    }
+
+    if (pragma.includes("0.8.")) {
+        return "0.8.24";
+    }
+
+    return "0.8.24";
+}
 
 function runSlither(code) {
     return new Promise((resolve, reject) => {
@@ -81,26 +168,94 @@ function runSlither(code) {
             );
         }
 
+        const solidityVersion =
+            detectSolidityVersion(code);
+
+        console.log("Received Solidity code:");
+console.log(code);
+console.log("Detected Solidity version:", solidityVersion);
+
+        console.log(
+            `Detected Solidity version: ${solidityVersion}`
+        );
+
+        let solcExecutable;
+
+        try {
+
+            if (isWindows) {
+
+    execFileSync(
+        "solc-select",
+        ["use", solidityVersion],
+        {
+            windowsHide: true,
+            stdio: "ignore"
+        }
+    );
+
+    solcExecutable =
+        "C:\\Python314\\Scripts\\solc.exe";
+
+} else {
+
+    const linuxCompilers = {
+        "0.4.26": "/opt/solc-versions/solc-0.4.26",
+        "0.5.17": "/opt/solc-versions/solc-0.5.17",
+        "0.6.12": "/opt/solc-versions/solc-0.6.12",
+        "0.7.6": "/opt/solc-versions/solc-0.7.6",
+        "0.8.20": "/opt/solc-versions/solc-0.8.20",
+        "0.8.24": "/opt/solc-versions/solc-0.8.24",
+        "0.8.36": "/opt/solc-versions/solc-0.8.36"
+    };
+    solcExecutable =
+        linuxCompilers[solidityVersion] ||
+        "/opt/solc-versions/solc-0.8.24";
+}
+        } catch (compilerError) {
+            try {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            } catch (_) {}
+            return reject(
+                new Error(
+                    `Could not select Solidity compiler ${solidityVersion}: ${compilerError.message}`
+                )
+            );
+        }
+
+        console.log(
+            `Using Solidity compiler: ${solcExecutable}`
+        );
+
         execFile(
             SLITHER,
             [
-                filePath,
+                fileName,
+                "--solc",
+                solcExecutable,
                 "--json",
                 "-"
             ],
             {
                 env: {
-                    ...scannerEnv,
-                    SOLC_VERSION: "0.8.24"
+                    ...scannerEnv
                 },
+
                 cwd: SECURITY_TOOLS,
+
                 windowsHide: true,
-                maxBuffer: 20 * 1024 * 1024,
+
+                maxBuffer:
+                    20 * 1024 * 1024,
+
                 timeout: 60000
             },
+
             (error, stdout, stderr) => {
 
-                // Always remove temporary file
+                // Always remove temporary file.
                 try {
                     if (fs.existsSync(filePath)) {
                         fs.unlinkSync(filePath);
@@ -112,22 +267,60 @@ function runSlither(code) {
                     );
                 }
 
-                console.log("========== SLITHER DEBUG ==========");
-                console.log("Exit code:", error?.code);
-                console.log("Signal:", error?.signal);
-                console.log("Killed:", error?.killed);
-                console.log("STDOUT:", stdout || "(empty)");
-                console.log("STDERR:", stderr || "(empty)");
-                console.log("===================================");
+                console.log(
+                    "========== SLITHER DEBUG =========="
+                );
 
-                // First try to parse stdout as Slither JSON.
-                // Slither uses --json - to write JSON to stdout.
+                console.log(
+                    "Solidity version:",
+                    solidityVersion
+                );
+
+                console.log(
+                    "Compiler:",
+                    solcExecutable
+                );
+
+                console.log(
+                    "Exit code:",
+                    error?.code
+                );
+
+                console.log(
+                    "Signal:",
+                    error?.signal
+                );
+
+                console.log(
+                    "Killed:",
+                    error?.killed
+                );
+
+                console.log(
+                    "STDOUT:",
+                    stdout || "(empty)"
+                );
+
+                console.log(
+                    "STDERR:",
+                    stderr || "(empty)"
+                );
+
+                console.log(
+                    "==================================="
+                );
+
+                // Slither JSON output.
                 if (stdout && stdout.trim()) {
-                    try {
-                        const result = JSON.parse(stdout);
 
-                        // Slither JSON can report an internal error
-                        if (result?.success === false) {
+                    try {
+
+                        const result =
+                            JSON.parse(stdout);
+
+                        if (
+                            result?.success === false
+                        ) {
                             return reject(
                                 new Error(
                                     result.error ||
@@ -142,20 +335,29 @@ function runSlither(code) {
                         const findings =
                             detectors.map((item) => ({
                                 name: item.check,
-                                severity: item.impact,
-                                confidence: item.confidence,
-                                description: item.description,
+
+                                severity:
+                                    item.impact,
+
+                                confidence:
+                                    item.confidence,
+
+                                description:
+                                    item.description,
 
                                 function:
                                     item.elements?.find(
                                         (element) =>
-                                            element.type === "function"
+                                            element.type ===
+                                            "function"
                                     )?.name || null,
 
                                 lines:
                                     item.elements?.flatMap(
                                         (element) =>
-                                            element.source_mapping?.lines || []
+                                            element
+                                                .source_mapping
+                                                ?.lines || []
                                     ) || [],
 
                                 reference:
@@ -169,6 +371,7 @@ function runSlither(code) {
                         return resolve(findings);
 
                     } catch (parseError) {
+
                         console.error(
                             "Could not parse Slither stdout as JSON:",
                             parseError.message
@@ -176,12 +379,12 @@ function runSlither(code) {
                     }
                 }
 
-                // If JSON was not returned, expose the real process error.
                 if (error) {
+
                     return reject(
                         new Error(
                             [
-                                `Slither process failed.`,
+                                "Slither process failed.",
                                 `Exit code: ${error.code ?? "unknown"}`,
                                 `Signal: ${error.signal ?? "none"}`,
                                 `STDERR: ${stderr || "(empty)"}`,
@@ -189,6 +392,7 @@ function runSlither(code) {
                             ].join("\n")
                         )
                     );
+
                 }
 
                 return reject(
