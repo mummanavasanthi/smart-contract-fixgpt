@@ -784,6 +784,7 @@ function App() {
                 }
             }
         );
+        
 
 
         // =================================================
@@ -1481,6 +1482,47 @@ function App() {
                         <h3>
                              Security Findings
                         </h3>
+
+                        {/* SYNTAX CORRECTION */}
+
+{result.syntaxFix && (
+    <section className="fix-section">
+
+        <div className="section-header">
+            <h2>AI Syntax Correction</h2>
+
+            <button
+                className="copy-button"
+                onClick={async () => {
+                    try {
+                        await navigator.clipboard.writeText(
+                            result.syntaxFix.fixedCode
+                        );
+
+                        alert("Corrected Solidity code copied!");
+                    } catch (err) {
+                        setError(
+                            "Could not copy the corrected code."
+                        );
+                    }
+                }}
+            >
+                Copy Corrected Code
+            </button>
+        </div>
+
+        <p>
+            The original Solidity code contained a
+            compilation or syntax error. Gemini generated
+            a corrected version before security analysis.
+        </p>
+
+        <pre>
+            {result.syntaxFix.fixedCode}
+        </pre>
+
+    </section>
+)}
 
 
                         {

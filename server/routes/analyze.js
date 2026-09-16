@@ -18,12 +18,7 @@ const isWindows =
     process.platform === "win32";
 
 const SLITHER = isWindows
-    ? path.join(
-        SECURITY_TOOLS,
-        ".venv",
-        "Scripts",
-        "slither.exe"
-    )
+    ? "C:\\Users\\vassu\\Desktop\\smart-contract-fixgpt\\security-tools\\.venv\\Scripts\\slither.exe"
     : "/opt/slither-venv/bin/slither";
 
 const SOLC = isWindows
@@ -229,21 +224,34 @@ console.log("Detected Solidity version:", solidityVersion);
             `Using Solidity compiler: ${solcExecutable}`
         );
 
-        execFile(
-            SLITHER,
-            [
-                fileName,
-                "--solc",
-                solcExecutable,
-                "--json",
-                "-"
-            ],
+        const slitherArgs = [
+    filePath,
+    "--solc",
+    solcExecutable
+];
+
+// Add import paths only when the contract contains imports.
+if (/\bimport\s+["']/.test(code)) {
+    slitherArgs.push(
+        "--solc-args",
+        "--base-path . --include-path node_modules"
+    );
+}
+
+slitherArgs.push(
+    "--json",
+    "-"
+);
+
+execFile(
+    SLITHER,
+    slitherArgs,
             {
                 env: {
                     ...scannerEnv
                 },
 
-                cwd: SECURITY_TOOLS,
+                cwd: path.dirname(filePath),
 
                 windowsHide: true,
 
@@ -406,6 +414,304 @@ console.log("Detected Solidity version:", solidityVersion);
 }
 
 // ===============================
+// SOLIDITY COMPILATION CHECK
+// ===============================
+
+function compileSolidity(code) {
+    return new Promise((resolve, reject) => {
+
+        const fileName =
+            `compile-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2, 10)}.sol`;
+
+        const filePath =
+            path.join(SECURITY_TOOLS, fileName);
+
+        try {
+            fs.writeFileSync(
+                filePath,
+                code,
+                "utf8"
+            );
+        } catch (error) {
+            return reject(
+                new Error(
+                    `Could not create compilation file: ${error.message}`
+                )
+            );
+        }
+
+        const solidityVersion =
+            detectSolidityVersion(code);
+
+        let solcExecutable;
+
+        try {
+
+            if (isWindows) {
+
+                execFileSync(
+                    "solc-select",
+                    ["use", solidityVersion],
+                    {
+                        windowsHide: true,
+                        stdio: "ignore"
+                    }
+                );
+
+                solcExecutable =
+                    "C:\\Python314\\Scripts\\solc.exe";
+
+            } else {
+
+                const linuxCompilers = {
+                    "0.4.26": "/opt/solc-versions/solc-0.4.26",
+                    "0.5.17": "/opt/solc-versions/solc-0.5.17",
+                    "0.6.12": "/opt/solc-versions/solc-0.6.12",
+                    "0.7.6": "/opt/solc-versions/solc-0.7.6",
+                    "0.8.20": "/opt/solc-versions/solc-0.8.20",
+                    "0.8.24": "/opt/solc-versions/solc-0.8.24",
+                    "0.8.36": "/opt/solc-versions/solc-0.8.36"
+                };
+
+                solcExecutable =
+                    linuxCompilers[solidityVersion] ||
+                    "/opt/solc-versions/solc-0.8.24";
+            }
+
+        } catch (compilerSelectError) {
+
+            try {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            } catch (_) {}
+
+            return reject(
+                new Error(
+                    `Could not select Solidity compiler ${solidityVersion}: ${compilerSelectError.message}`
+                )
+            );
+        }
+
+        const solcArgs = [
+            fileName,
+            "--bin"
+        ];
+
+        // Support imports such as OpenZeppelin.
+        if (/\bimport\s+["']/.test(code)) {
+            solcArgs.splice(
+                1,
+                0,
+                "--base-path",
+                ".",
+                "--include-path",
+                "node_modules"
+            );
+        }
+
+        execFile(
+            solcExecutable,
+            solcArgs,
+            {
+                env: {
+                    ...scannerEnv
+                },
+
+                cwd: SECURITY_TOOLS,
+
+                windowsHide: true,
+
+                maxBuffer:
+                    20 * 1024 * 1024,
+
+                timeout: 60000
+            },
+
+            (error, stdout, stderr) => {
+
+                try {
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                    }
+                } catch (_) {}
+
+                if (error) {
+
+                    const diagnostics =
+                        [
+                            stderr,
+                            stdout
+                        ]
+                            .filter(Boolean)
+                            .join("\n")
+                            .trim();
+
+                    const compilationError =
+                        new Error(
+                            diagnostics ||
+                            `Solidity ${solidityVersion} compilation failed.`
+                        );
+
+                    compilationError.isCompilationError = true;
+                    compilationError.solidityVersion =
+                        solidityVersion;
+
+                    return reject(
+                        compilationError
+                    );
+                }
+
+                resolve({
+                    solidityVersion,
+                    compiler: solcExecutable
+                });
+            }
+        );
+    });
+}
+
+
+// ===============================
+// GEMINI SYNTAX REPAIR
+// ===============================
+
+async function generateSyntaxFix(
+    code,
+    diagnostics
+) {
+
+    if (!process.env.GEMINI_API_KEY) {
+        throw new Error(
+            "GEMINI_API_KEY is not configured on the server."
+        );
+    }
+
+    const prompt = `
+You are a Solidity compiler and syntax repair expert.
+
+The following Solidity contract failed compilation.
+
+Compiler diagnostics:
+${diagnostics}
+
+Original Solidity code:
+
+${code}
+
+Your task:
+1. Identify the syntax or compilation error.
+2. Correct the error.
+3. Preserve the original contract logic and functionality.
+4. Do not add unrelated security changes.
+5. Return the complete corrected Solidity contract.
+
+Return your response in this format:
+
+EXPLANATION:
+Brief explanation of the compilation error and correction.
+
+FIXED CODE:
+Complete corrected Solidity contract.
+`;
+
+    const models = [
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.6-flash"
+    ];
+
+    let lastError = null;
+
+    for (const model of models) {
+
+        try {
+
+            console.log(
+                `Trying Gemini syntax repair model: ${model}`
+            );
+
+            const genAI =
+                new GoogleGenerativeAI(
+                    process.env.GEMINI_API_KEY
+                );
+
+            const modelClient =
+                genAI.getGenerativeModel({
+                    model
+                });
+
+            const response =
+                await modelClient.generateContent(
+                    prompt
+                );
+
+            const text =
+                response?.response?.text?.() || "";
+
+            if (!text) {
+                throw new Error(
+                    "Gemini returned an empty syntax-repair response."
+                );
+            }
+
+            let fixedCode =
+                extractCode(text);
+
+            if (!fixedCode) {
+
+                const solidityMatch =
+                    text.match(
+                        /(?:\/\/ SPDX-License-Identifier:[\s\S]*?)?pragma\s+solidity[\s\S]*?contract\s+\w+[\s\S]*/
+                    );
+
+                if (solidityMatch) {
+                    fixedCode =
+                        solidityMatch[0].trim();
+                }
+            }
+
+            if (!fixedCode) {
+                throw new Error(
+                    "Gemini returned no corrected Solidity code."
+                );
+            }
+
+            // Verify the AI-generated code before continuing.
+            await compileSolidity(
+                fixedCode
+            );
+
+            console.log(
+                `Gemini syntax repair success: ${model}`
+            );
+
+            return {
+                explanation: text,
+                fixedCode
+            };
+
+        } catch (error) {
+
+            lastError = error;
+
+            console.error(
+                `Gemini syntax repair failed (${model}):`,
+                error.message
+            );
+        }
+    }
+
+    throw new Error(
+        `All Gemini syntax repair attempts failed. Last error: ${
+            lastError?.message || "Unknown error"
+        }`
+    );
+}
+
+// ===============================
 // GEMINI FIX
 // ===============================
 
@@ -447,10 +753,10 @@ function extractCode(text) {
     return null;
 }
 
-async function generateFix(code, finding) {
+async function generateFix(analysisCode, finding) {
 
-    if (!process.env.GEMINI_API_KEY) {
-        throw new Error(
+    if (!process.env.GEMINI_API_KEY) { 
+        throw new Error( 
             "GEMINI_API_KEY is not configured on the server."
         );
     }
@@ -668,20 +974,69 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // ===============================
-        // 1. ORIGINAL SCAN
-        // ===============================
+       // ===============================
+// 1. COMPILE CHECK + SYNTAX REPAIR
+// ===============================
 
-        console.log(
-            "Starting Slither analysis..."
+let analysisCode = code;
+let syntaxFix = null;
+
+try {
+
+    await compileSolidity(
+        analysisCode
+    );
+
+    console.log(
+        "Solidity compilation check passed."
+    );
+
+} catch (compileError) {
+
+    if (!compileError.isCompilationError) {
+        throw compileError;
+    }
+
+    console.warn(
+        "Solidity compilation failed. Trying Gemini syntax repair..."
+    );
+
+    const syntaxResult =
+        await generateSyntaxFix(
+            analysisCode,
+            compileError.message
         );
 
-        const originalFindings =
-            await runSlither(code);
+    analysisCode =
+        syntaxResult.fixedCode;
 
-        console.log(
-            `Slither completed. Findings: ${originalFindings.length}`
-        );
+    syntaxFix = {
+        explanation:
+            syntaxResult.explanation,
+        fixedCode:
+            syntaxResult.fixedCode
+    };
+
+    console.log(
+        "Gemini syntax repair completed and compilation passed."
+    );
+}
+
+
+            // ===============================
+            // 2. ORIGINAL SCAN
+            // ===============================
+
+            console.log(
+                "Starting Slither analysis..."
+            );
+
+            const originalFindings =
+                await runSlither(analysisCode);
+
+            console.log(
+                `Slither completed. Findings: ${originalFindings.length}`
+            );
 
         // ===============================
         // NO FINDINGS
@@ -708,7 +1063,8 @@ router.post("/", async (req, res) => {
 
                 ai: null,
                 fixedCode: null,
-                reanalysis: null
+                reanalysis: null,
+                syntaxFix: syntaxFix
             });
         }
 
@@ -740,32 +1096,31 @@ router.post("/", async (req, res) => {
 
             return res.json({
 
-                success: true,
+    success: true,
 
-                message:
-                    "Only informational findings were detected.",
+    message:
+        syntaxFix
+            ? "Syntax error was corrected successfully. No security findings were detected."
+            : "No Slither findings detected.",
 
-                original: {
-                    count:
-                        originalFindings.length,
+    original: {
+        count: 0,
+        findings: []
+    },
 
-                    findings:
-                        originalFindings
-                },
+    actionable: [],
+    informational: [],
 
-                actionable: [],
+    ai: null,
 
-                informational:
-                    informationalFindings,
+    fixedCode: null,
 
-                ai: null,
+    reanalysis: null,
 
-                fixedCode: null,
+    syntaxFix: syntaxFix
+});
 
-                reanalysis: null
-            });
         }
-
         // ===============================
         // 4. SELECT PRIMARY FINDING
         // ===============================
@@ -788,7 +1143,7 @@ router.post("/", async (req, res) => {
 
             aiResult =
                 await generateFix(
-                    code,
+                    analysisCode,
                     finding
                 );
 
