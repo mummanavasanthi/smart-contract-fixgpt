@@ -143,6 +143,94 @@ function App() {
         );
     };
 
+    // Human-friendly finding guidance for the UI and PDF report.
+    const findingGuidance = {
+        "reentrancy-eth": {
+            title: "Reentrancy Vulnerability",
+            recommendation:
+                "Follow the checks-effects-interactions pattern and consider a reentrancy guard for externally callable withdrawal paths.",
+            resolution:
+                "Update critical state before making the external call, validate the amount, and use ReentrancyGuard where appropriate."
+        },
+        "reentrancy-no-eth": {
+            title: "Reentrancy Vulnerability",
+            recommendation:
+                "Prevent an external call from re-entering the contract while state is in an inconsistent state.",
+            resolution:
+                "Apply checks-effects-interactions and use a reentrancy guard when the function can be re-entered."
+        },
+        "arbitrary-send-eth": {
+            title: "Arbitrary ETH Transfer",
+            recommendation:
+                "Restrict the destination and amount so untrusted input cannot redirect contract funds.",
+            resolution:
+                "Use access-controlled withdrawal logic and validate recipient addresses and transfer amounts."
+        },
+        "controlled-delegatecall": {
+            title: "Input-Controlled Delegatecall",
+            recommendation:
+                "Do not allow untrusted users to select the delegatecall target.",
+            resolution:
+                "Whitelist trusted implementation addresses and protect upgrade or execution functions with strong access control."
+        },
+        "tx-origin": {
+            title: "tx.origin Authentication",
+            recommendation:
+                "Avoid tx.origin for authorization decisions.",
+            resolution:
+                "Use msg.sender or a role-based access-control mechanism instead of tx.origin."
+        },
+        "unchecked-lowlevel": {
+            title: "Unchecked Low-Level Call",
+            recommendation:
+                "Always validate the success flag returned by low-level calls.",
+            resolution:
+                "Capture the return value from call/delegatecall/send and revert or handle the failure explicitly."
+        },
+        "missing-zero-check": {
+            title: "Missing Zero-Address Check",
+            recommendation:
+                "Validate addresses before storing or using them.",
+            resolution:
+                "Reject address(0) for owners, recipients, implementations, and other critical address inputs."
+        },
+        "low-level-calls": {
+            title: "Low-Level Call Usage",
+            recommendation:
+                "Review low-level calls carefully because they bypass higher-level Solidity safety checks.",
+            resolution:
+                "Prefer safe abstractions when possible and explicitly validate return values and target addresses."
+        },
+        "timestamp": {
+            title: "Block Timestamp Dependence",
+            recommendation:
+                "Do not use block.timestamp as a source of strong randomness or precise time guarantees.",
+            resolution:
+                "Use timestamp only for coarse time-based logic and use an appropriate trusted mechanism for randomness."
+        },
+        "unprotected-upgrade": {
+            title: "Unprotected Upgrade",
+            recommendation:
+                "Protect upgrade operations with strict authorization.",
+            resolution:
+                "Use Ownable, AccessControl, or another explicit governance mechanism for upgrades."
+        }
+    };
+
+    const getFindingDetails = (finding) => {
+        return (
+            findingGuidance[finding?.name] || {
+                title: String(finding?.name || "Security Finding")
+                    .replace(/[-_]+/g, " ")
+                    .replace(/\b\w/g, (letter) => letter.toUpperCase()),
+                recommendation:
+                    "Review the detector description and restrict the affected behavior to trusted inputs and authorized callers.",
+                resolution:
+                    "Apply the mitigation suggested by the detector, retest the contract, and run an independent security review before deployment."
+            }
+        );
+    };
+
 
     const originalFindings =
         result?.original?.findings || [];
@@ -183,16 +271,17 @@ function App() {
     // SECURITY SCORE
     // =====================================================
 
-    const securityScore =
-        Math.max(
-            0,
-            100 -
-            (highCount * 30) -
-            (mediumCount * 20) -
-            (lowCount * 10) -
-            (infoCount * 2) -
-            (optimizationCount * 1)
-        );
+    const weightedPenalty =
+    (highCount * 25) +
+    (mediumCount * 12) +
+    (lowCount * 5) +
+    (infoCount * 1) +
+    (optimizationCount * 0.5);
+
+const securityScore = Math.max(
+    0,
+    Math.round(100 - weightedPenalty)
+);
 
 
     // =====================================================
@@ -391,7 +480,7 @@ function App() {
         pdf.setFontSize(10);
 
         pdf.text(
-            "AI-Powered Smart Contract Security Report",
+            "AI-Powered Smart Contract Security Report | EtherAuthority Internship",
             margin,
             27
         );
@@ -708,6 +797,36 @@ function App() {
 
                 paragraph(
                     finding.description,
+                    8.5
+                );
+
+                const pdfFindingDetails =
+                    getFindingDetails(finding);
+
+                label(
+                    "Recommendation",
+                    pdfFindingDetails.recommendation
+                );
+
+                pdf.setFont(
+                    "helvetica",
+                    "bold"
+                );
+
+                pdf.setFontSize(8.5);
+
+                ensureSpace(8);
+
+                pdf.text(
+                    "How to Resolve",
+                    margin,
+                    y
+                );
+
+                y += 4.5;
+
+                paragraph(
+                    pdfFindingDetails.resolution,
                     8.5
                 );
 
@@ -1187,9 +1306,20 @@ function App() {
             );
 
             pdf.text(
-                `Smart Contract FixGPT | Page ${page} of ${totalPages}`,
+                `Smart Contract FixGPT | EtherAuthority Internship | Developed by Vasanthi | Page ${page} of ${totalPages}`,
                 pageWidth / 2,
-                pageHeight - 8,
+                pageHeight - 11,
+                {
+                    align: "center"
+                }
+            );
+
+            pdf.setFontSize(6.5);
+
+            pdf.text(
+                "GitHub: github.com/mummanavasanthi/smart-contract-fixgpt | LinkedIn: linkedin.com/in/vasanthi-mummana-49bba3298/",
+                pageWidth / 2,
+                pageHeight - 5,
                 {
                     align: "center"
                 }
@@ -1224,15 +1354,32 @@ function App() {
 
             <header className="header">
 
-                <h1>
-                    Smart Contract FixGPT
-                </h1>
+                <div className="header-inner">
 
-                <p>
-                    AI-powered Solidity
-                    vulnerability detection
-                    and remediation
-                </p>
+                    <div className="header-logo">
+                        <div className="header-logo-card">
+                            <img
+                                src="/etherauthority-logo.png"
+                                alt="EtherAuthority"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="header-title">
+                        <h1>
+                            Smart Contract FixGPT
+                        </h1>
+
+                        <p>
+                            AI-powered Solidity vulnerability detection and remediation
+                        </p>
+                    </div>
+
+                    <div className="header-badge">
+                        Web3 Security • AI Analysis
+                    </div>
+
+                </div>
 
             </header>
 
@@ -1341,21 +1488,36 @@ function App() {
 
                         {/* SECURITY SCORE */}
 
-                        <div className="security-score">
+                        <div
+                            className="security-score"
+                            style={{
+                                "--score": `${securityScore}%`
+                            }}
+                        >
 
-                            <div className="score-number">
-                                {securityScore}
+                            <div className="score-ring">
+                                <div className="score-number">
+                                    {securityScore}
+                                </div>
                             </div>
 
-                            <div>
+                            <div className="score-content">
+                                <span className="eyebrow">Security Assessment</span>
                                 <h3>
                                     Security Score
                                 </h3>
 
                                 <p>
-                                    Based on detected
-                                    Slither findings
+                                    Project-defined score based on weighted Slither findings.
+                                    Higher-risk findings reduce the score more heavily.
                                 </p>
+                            </div>
+
+                            <div className="score-legend">
+                                <span><b>30</b> High</span>
+                                <span><b>20</b> Medium</span>
+                                <span><b>10</b> Low</span>
+                                <span><b>2</b> Informational</span>
                             </div>
 
                         </div>
@@ -1521,6 +1683,15 @@ function App() {
             {result.syntaxFix.fixedCode}
         </pre>
 
+        {result.syntaxFix.explanation && (
+            <div className="syntax-explanation">
+                <strong>What was corrected:</strong>
+                <p>
+                    {result.syntaxFix.explanation}
+                </p>
+            </div>
+        )}
+
     </section>
 )}
 
@@ -1537,52 +1708,80 @@ function App() {
                                 )
                                 : (
 
-                                    originalFindings.map(
-                                        (
-                                            finding,
-                                            index
-                                        ) => (
+                                    <div className="findings-list">
+                                        {originalFindings.map(
+                                            (finding, index) => {
 
-                                            <div
-    className={`finding ${finding.severity.toLowerCase()}`}
-    key={index}
->
-    <h3>
-        {finding.name}
-    </h3>
+                                                const details =
+                                                    getFindingDetails(finding);
 
-    <p>
-        <strong>Type:</strong>{" "}
-        {finding.severity === "High" ||
-        finding.severity === "Medium"
-            ? "Security Vulnerability"
-            : finding.severity === "Optimization"
-            ? "Optimization"
-            : "Informational Finding"}
-    </p>
+                                                const uniqueLines = [
+                                                    ...new Set(
+                                                        finding.lines || []
+                                                    )
+                                                ];
 
-    <p>
-        <strong>Severity:</strong>{" "}
-        {finding.severity}
-    </p>
+                                                return (
+                                                    <article
+                                                        className={`finding ${finding.severity.toLowerCase()}`}
+                                                        key={index}
+                                                    >
+                                                        <div className="finding-topline">
+                                                            <span className={`severity-badge ${finding.severity.toLowerCase()}`}>
+                                                                {finding.severity}
+                                                            </span>
 
-    <p>
-        <strong>Confidence:</strong>{" "}
-        {finding.confidence}
-    </p>
+                                                            <span className="finding-type">
+                                                                {finding.severity === "High" || finding.severity === "Medium"
+                                                                    ? "Security Vulnerability"
+                                                                    : finding.severity === "Optimization"
+                                                                    ? "Optimization"
+                                                                    : "Informational Finding"}
+                                                            </span>
+                                                        </div>
 
-    <p>
-        <strong>Function:</strong>{" "}
-        {finding.function || "N/A"}
-    </p>
+                                                        <h3>
+                                                            {details.title}
+                                                        </h3>
 
-    <p>
-        {finding.description}
-    </p>
-</div>
+                                                        <div className="finding-meta">
+                                                            <span>
+                                                                <strong>Confidence:</strong> {finding.confidence || "N/A"}
+                                                            </span>
+                                                            <span>
+                                                                <strong>Function:</strong> {finding.function || "N/A"}
+                                                            </span>
+                                                            <span>
+                                                                <strong>Lines:</strong> {uniqueLines.length ? uniqueLines.join(", ") : "N/A"}
+                                                            </span>
+                                                        </div>
 
-                                        )
-                                    )
+                                                        <div className="finding-section">
+                                                            <h4>Description</h4>
+                                                            <p>{finding.description}</p>
+                                                        </div>
+
+                                                        <div className="finding-section">
+                                                            <h4>Recommendation</h4>
+                                                            <p>{details.recommendation}</p>
+                                                        </div>
+
+                                                        <div className="finding-section resolution">
+                                                            <h4>How to Resolve</h4>
+                                                            <p>{details.resolution}</p>
+                                                        </div>
+
+                                                        {finding.reference && (
+                                                            <details className="slither-reference">
+                                                                <summary>Slither Reference</summary>
+                                                                <p>{finding.reference}</p>
+                                                            </details>
+                                                        )}
+                                                    </article>
+                                                );
+                                            }
+                                        )}
+                                    </div>
                                 )
                         }
 
@@ -1750,8 +1949,51 @@ function App() {
                 )}
 
             </main>
+
+            <footer className="site-footer">
+                <div className="footer-inner">
+
+                    <div className="footer-brand">
+                        <div>
+                            <strong>Smart Contract FixGPT</strong>
+                            <span>Developed by Vasanthi </span>
+                        </div>
+                    </div>
+
+                    <div className="footer-links">
+                        <a
+                            href="https://github.com/mummanavasanthi/smart-contract-fixgpt"
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label="GitHub repository"
+                            title="GitHub Repository"
+                            className="social-link"
+                        >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path fill="currentColor" d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.23c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.35-1.76-1.35-1.76-1.09-.75.08-.74.08-.74 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.8 1.3 3.48.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.95 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.17 0 0 1-.32 3.3 1.23a11.4 11.4 0 0 1 6-.03c2.3-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.87.12 3.17.77.84 1.24 1.91 1.24 3.22 0 4.62-2.81 5.64-5.49 5.94.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z"/>
+                            </svg>
+                        </a>
+
+                        <a
+                            href="https://www.linkedin.com/in/vasanthi-mummana-49bba3298/"
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label="LinkedIn profile"
+                            title="LinkedIn Profile"
+                            className="social-link"
+                        >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path fill="currentColor" d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.36V9h3.41v1.56h.05c.47-.9 1.64-1.85 3.37-1.85 3.61 0 4.28 2.38 4.28 5.48v6.26ZM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12ZM3.56 20.45h3.56V9H3.56v11.45ZM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0Z"/>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <p className="footer-note">
+                    AI-assisted security analysis • Static analysis by Slither • Review all AI-generated fixes before deployment
+                </p>
+            </footer>
         </div>
     );
 }
-
 export default App;
