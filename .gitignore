@@ -1,0 +1,7 @@
+client/dist/
+security-tools/node_modules/
+security-tools/ImportTest.sol
+security-tools/temp-test.sol
+server/test-gemini.js
+security-tools/package-lock.json
+security-tools/package.json

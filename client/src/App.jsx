@@ -25,8 +25,7 @@ function App() {
 
         try {
                         const response = await fetch(
-                "https://spectacular-fascination-production-aa82.up.railway.app/analyze",
-                {
+                        "https://spectacular-fascination-production-aa82.up.railway.app/analyze",                {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
@@ -438,13 +437,11 @@ const securityScore = Math.max(
         // =================================================
         // PAGE 1 - SUMMARY
         // =================================================
-
         pdf.setFillColor(
             17,
             24,
             39
         );
-
         pdf.rect(
             0,
             0,
@@ -452,72 +449,57 @@ const securityScore = Math.max(
             42,
             "F"
         );
-
         pdf.setTextColor(
             255,
             255,
             255
         );
-
         pdf.setFont(
             "helvetica",
             "bold"
         );
-
         pdf.setFontSize(21);
-
         pdf.text(
             "Smart Contract FixGPT",
             margin,
             18
         );
-
         pdf.setFont(
             "helvetica",
             "normal"
         );
-
         pdf.setFontSize(10);
-
         pdf.text(
             "AI-Powered Smart Contract Security Report | EtherAuthority Internship",
             margin,
             27
         );
-
         pdf.setTextColor(
             17,
             24,
             39
         );
-
         y = 55;
-
         heading(
             "Audit Summary"
         );
-
         label(
             "Contract",
             fileName ||
             "Pasted Solidity Contract"
         );
-
         label(
             "Findings Before",
             result.original?.count ?? 0
         );
-
         label(
             "Findings After",
             result.reanalysis?.count ?? 0
         );
-
         label(
             "Resolved",
             resolved.length
         );
-
         y += 5;
 
 
@@ -768,25 +750,21 @@ const securityScore = Math.max(
                         finding.lines || []
                     )
                 ];
-
                 label(
                     "Source Lines",
                     uniqueLines.length
-                        ? uniqueLines.join(", ")
-                        : "N/A"
+                    ? uniqueLines.join(", ")
+                    : "N/A"
                 );
 
                 pdf.setFont(
                     "helvetica",
                     "bold"
                 );
-
                 pdf.setFontSize(
                     8.5
                 );
-
                 ensureSpace(8);
-
                 pdf.text(
                     "Description",
                     margin,
@@ -903,7 +881,7 @@ const securityScore = Math.max(
                 }
             }
         );
-        
+
 
 
         // =================================================
@@ -1513,13 +1491,13 @@ const securityScore = Math.max(
                                 </p>
                             </div>
 
-                            <div className="score-legend">
-                                <span><b>30</b> High</span>
-                                <span><b>20</b> Medium</span>
-                                <span><b>10</b> Low</span>
-                                <span><b>2</b> Informational</span>
+                        <div className="score-legend">
+                            <span><b>{highCount}</b> High</span>
+                            <span><b>{mediumCount}</b> Medium</span>
+                            <span><b>{lowCount}</b> Low</span>
+                            <span><b>{infoCount}</b> Informational</span>
+                             <span><b>{optimizationCount}</b> Optimization</span>
                             </div>
-
                         </div>
 
 
@@ -1648,7 +1626,7 @@ const securityScore = Math.max(
                         {/* SYNTAX CORRECTION */}
 
 {result.syntaxFix && (
-    <section className="fix-section">
+    <section className="fix-section syntax-fix-section">
 
         <div className="section-header">
             <h2>AI Syntax Correction</h2>
@@ -1684,13 +1662,27 @@ const securityScore = Math.max(
         </pre>
 
         {result.syntaxFix.explanation && (
-            <div className="syntax-explanation">
-                <strong>What was corrected:</strong>
-                <p>
-                    {result.syntaxFix.explanation}
-                </p>
-            </div>
-        )}
+    <div className="syntax-explanation">
+        <strong>What was corrected:</strong>
+
+        <p>
+            {(() => {
+                const explanation =
+                    result.syntaxFix.explanation;
+
+                const match = explanation.match(
+                    /EXPLANATION:\s*([\s\S]*?)(?:\n\s*FIXED CODE:|$)/i
+                );
+
+                return (
+                    match
+                        ? match[1].trim()
+                        : explanation.trim()
+                );
+            })()}
+        </p>
+    </div>
+)}
 
     </section>
 )}
@@ -1748,11 +1740,9 @@ const securityScore = Math.max(
                                                             <span>
                                                                 <strong>Confidence:</strong> {finding.confidence || "N/A"}
                                                             </span>
+
                                                             <span>
                                                                 <strong>Function:</strong> {finding.function || "N/A"}
-                                                            </span>
-                                                            <span>
-                                                                <strong>Lines:</strong> {uniqueLines.length ? uniqueLines.join(", ") : "N/A"}
                                                             </span>
                                                         </div>
 
@@ -1823,7 +1813,7 @@ const securityScore = Math.max(
                             result.fixedCode && (
 
                                 <section
-                                    className="fix-section"
+                                    className="fix-section ai-fix-section"
                                 >
 
                                     <div
