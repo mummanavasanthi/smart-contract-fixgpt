@@ -25,7 +25,7 @@ function App() {
 
         try {
                         const response = await fetch(
-                        "https://spectacular-fascination-production-aa82.up.railway.app/analyze",                {
+                        "https://smart-contract-fixgpt-lbkc.onrender.com/analyze",                {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
