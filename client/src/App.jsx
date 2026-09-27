@@ -278,7 +278,7 @@ function App() {
     (optimizationCount * 0.5);
 
 const securityScore = Math.max(
-    0,
+    10,
     Math.round(100 - weightedPenalty)
 );
 
