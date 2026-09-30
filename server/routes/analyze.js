@@ -776,7 +776,6 @@ async function generateSyntaxFix(
     code,
     diagnostics
 ) {
-
     if (!process.env.GEMINI_API_KEY) {
         throw new Error(
             "GEMINI_API_KEY is not configured on the server."
@@ -812,90 +811,133 @@ Complete corrected Solidity contract.
 
     let lastError = null;
 
-    for (
-        const model of GEMINI_MODELS
-    ) {
-
-        try {
-
-            console.log(
-                `Trying Gemini syntax repair model: ${model}`
-            );
-
-            const genAI =
-                new GoogleGenerativeAI(
-                    process.env.GEMINI_API_KEY
+    for (const model of GEMINI_MODELS) {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                console.log(
+                    `Trying Gemini syntax repair model: ${model} (attempt ${attempt}/3)`
                 );
 
-            const modelClient =
-                genAI.getGenerativeModel({
-                    model
-                });
-
-            const response =
-                await modelClient.generateContent(
-                    prompt
-                );
-
-            const text =
-                response
-                    ?.response
-                    ?.text?.() ||
-                "";
-
-            if (!text) {
-                throw new Error(
-                    "Gemini returned an empty syntax-repair response."
-                );
-            }
-
-            let fixedCode =
-                extractCode(text);
-
-            if (!fixedCode) {
-
-                const solidityMatch =
-                    text.match(
-                        /(?:\/\/ SPDX-License-Identifier:[\s\S]*?)?pragma\s+solidity[\s\S]*?contract\s+\w+[\s\S]*/
+                const genAI =
+                    new GoogleGenerativeAI(
+                        process.env.GEMINI_API_KEY
                     );
 
-                if (solidityMatch) {
-                    fixedCode =
-                        solidityMatch[0].trim();
+                const modelClient =
+                    genAI.getGenerativeModel({
+                        model
+                    });
+
+                const response =
+                    await modelClient.generateContent(
+                        prompt
+                    );
+
+                const text =
+                    response?.response?.text?.() || "";
+
+                if (!text.trim()) {
+                    throw new Error(
+                        "Gemini returned an empty syntax-repair response."
+                    );
                 }
-            }
 
-            if (!fixedCode) {
-                throw new Error(
-                    "Gemini returned no corrected Solidity code."
+                let fixedCode =
+                    extractCode(text);
+
+                if (!fixedCode) {
+                    const solidityMatch =
+                        text.match(
+                            /(?:\/\/ SPDX-License-Identifier:[\s\S]*?)?pragma\s+solidity[\s\S]*?contract\s+\w+[\s\S]*/
+                        );
+
+                    if (solidityMatch) {
+                        fixedCode =
+                            solidityMatch[0].trim();
+                    }
+                }
+
+                if (!fixedCode) {
+                    throw new Error(
+                        "Gemini returned no corrected Solidity code."
+                    );
+                }
+
+                // Verify that Gemini's corrected code compiles.
+                await compileSolidity(fixedCode);
+
+                console.log(
+                    `Gemini syntax repair succeeded using ${model}`
                 );
+
+                return {
+                    explanation: text,
+                    fixedCode: fixedCode
+                };
+
+            } catch (error) {
+                lastError = error;
+
+                const message =
+                    String(
+                        error?.message || ""
+                    );
+
+                const lowerMessage =
+                    message.toLowerCase();
+
+                console.error(
+                    `Gemini syntax repair failed (${model}, attempt ${attempt}/3):`,
+                    message
+                );
+
+                const permanentError =
+                    lowerMessage.includes("api key") ||
+                    lowerMessage.includes("authentication") ||
+                    lowerMessage.includes("permission denied") ||
+                    lowerMessage.includes("invalid argument");
+
+                if (permanentError) {
+                    break;
+                }
+
+                const retryableError =
+                    lowerMessage.includes("503") ||
+                    lowerMessage.includes("service unavailable") ||
+                    lowerMessage.includes("high demand") ||
+                    lowerMessage.includes("429") ||
+                    lowerMessage.includes("rate limit") ||
+                    lowerMessage.includes("500") ||
+                    lowerMessage.includes("502") ||
+                    lowerMessage.includes("504") ||
+                    lowerMessage.includes("timeout");
+
+                if (
+                    retryableError &&
+                    attempt < 3
+                ) {
+                    const delay =
+                        attempt === 1
+                            ? 2000
+                            : 5000;
+
+                    console.log(
+                        `Temporary Gemini error. Retrying in ${delay}ms...`
+                    );
+
+                    await new Promise(
+                        (resolve) =>
+                            setTimeout(
+                                resolve,
+                                delay
+                            )
+                    );
+
+                    continue;
+                }
+
+                break;
             }
-
-            // Verify corrected code.
-            await compileSolidity(
-                fixedCode
-            );
-
-            console.log(
-                `Gemini syntax repair success: ${model}`
-            );
-
-            return {
-                explanation:
-                    text,
-
-                fixedCode:
-                    fixedCode
-            };
-
-        } catch (error) {
-
-            lastError = error;
-
-            console.error(
-                `Gemini syntax repair failed (${model}):`,
-                error.message
-            );
         }
     }
 
