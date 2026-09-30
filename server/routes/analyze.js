@@ -289,267 +289,428 @@ function compileSolidity(code) {
 // SLITHER ANALYSIS
 // =====================================================
 
-function runSlither(code) {
-    return new Promise((resolve, reject) => {
+async function runSlither(code) {
 
-        const fileName =
-            `temp-${Date.now()}-${Math.random()
-                .toString(36)
-                .slice(2, 10)}.sol`;
+    const MAX_ATTEMPTS = 3;
 
-        const filePath =
-            path.join(
-                SECURITY_TOOLS,
-                fileName
-            );
+    const RETRY_DELAYS = [
+        1500,
+        3000
+    ];
 
-        const solidityVersion =
-            detectSolidityVersion(code);
+    let lastError = null;
+
+    for (
+        let attempt = 1;
+        attempt <= MAX_ATTEMPTS;
+        attempt++
+    ) {
 
         try {
-            fs.writeFileSync(
-                filePath,
-                code,
-                "utf8"
+
+            console.log(
+                `Slither attempt ${attempt}/${MAX_ATTEMPTS}...`
             );
+
+            const findings =
+                await runSlitherOnce(code);
+
+            return findings;
+
         } catch (error) {
-            return reject(
-                new Error(
-                    `Could not create temporary Solidity file: ${error.message}`
-                )
+
+            lastError = error;
+
+            console.warn(
+                `Slither attempt ${attempt} failed:`,
+                error.message
             );
-        }
 
-        let solcExecutable;
+            if (
+                attempt < MAX_ATTEMPTS
+            ) {
 
-        try {
-            solcExecutable =
-                getSolcExecutable(
-                    solidityVersion
+                const delay =
+                    RETRY_DELAYS[
+                        attempt - 1
+                    ] || 3000;
+
+                console.log(
+                    `Retrying Slither in ${delay}ms...`
                 );
-        } catch (error) {
+
+                await new Promise(
+                    (resolve) =>
+                        setTimeout(
+                            resolve,
+                            delay
+                        )
+                );
+            }
+        }
+    }
+
+    throw (
+        lastError ||
+        new Error(
+            "Slither analysis failed after all retry attempts."
+        )
+    );
+}
+
+function runSlitherOnce(code) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const fileName =
+                `temp-${Date.now()}-${Math.random()
+                    .toString(36)
+                    .slice(2, 10)}.sol`;
+
+            const filePath =
+                path.join(
+                    SECURITY_TOOLS,
+                    fileName
+                );
 
             try {
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
-                }
-            } catch (_) {}
 
-            return reject(error);
-        }
+                fs.writeFileSync(
+                    filePath,
+                    code,
+                    "utf8"
+                );
 
-        console.log(
-            "Received Solidity code:"
-        );
+            } catch (error) {
 
-        console.log(code);
+                return reject(
+                    new Error(
+                        `Could not create temporary Solidity file: ${error.message}`
+                    )
+                );
+            }
 
-        console.log(
-            "Detected Solidity version:",
-            solidityVersion
-        );
+            const solidityVersion =
+                detectSolidityVersion(code);
 
-        console.log(
-            "Using Solidity compiler:",
-            solcExecutable
-        );
-
-        const slitherArgs = [
-            filePath,
-            "--solc",
-            solcExecutable
-        ];
-
-        if (hasImports(code)) {
-            slitherArgs.push(
-                "--solc-args",
-                "--base-path . --include-path node_modules"
+            console.log(
+                "Received Solidity code:"
             );
-        }
 
-        slitherArgs.push(
-            "--json",
-            "-"
-        );
+            console.log(code);
 
-        execFile(
-            SLITHER,
-            slitherArgs,
-            {
-                cwd:
-                    path.dirname(filePath),
+            console.log(
+                "Detected Solidity version:",
+                solidityVersion
+            );
 
-                env:
-                    scannerEnv,
+            let solcExecutable;
 
-                windowsHide:
-                    true,
+            try {
 
-                maxBuffer:
-                    20 * 1024 * 1024,
+                if (isWindows) {
 
-                timeout:
-                    60000
-            },
-            (
-                error,
-                stdout,
-                stderr
-            ) => {
+                    execFileSync(
+                        "solc-select",
+                        [
+                            "use",
+                            solidityVersion
+                        ],
+                        {
+                            windowsHide: true,
+                            stdio: "ignore"
+                        }
+                    );
+
+                    solcExecutable =
+                        "C:\\Python314\\Scripts\\solc.exe";
+
+                } else {
+
+                    const linuxCompilers = {
+
+                        "0.4.26":
+                            "/opt/solc-versions/solc-0.4.26",
+
+                        "0.5.17":
+                            "/opt/solc-versions/solc-0.5.17",
+
+                        "0.6.12":
+                            "/opt/solc-versions/solc-0.6.12",
+
+                        "0.7.6":
+                            "/opt/solc-versions/solc-0.7.6",
+
+                        "0.8.20":
+                            "/opt/solc-versions/solc-0.8.20",
+
+                        "0.8.24":
+                            "/opt/solc-versions/solc-0.8.24",
+
+                        "0.8.36":
+                            "/opt/solc-versions/solc-0.8.36"
+                    };
+
+                    solcExecutable =
+                        linuxCompilers[
+                            solidityVersion
+                        ] ||
+                        "/opt/solc-versions/solc-0.8.24";
+                }
+
+            } catch (compilerError) {
 
                 try {
-                    if (fs.existsSync(filePath)) {
-                        fs.unlinkSync(filePath);
+
+                    if (
+                        fs.existsSync(
+                            filePath
+                        )
+                    ) {
+
+                        fs.unlinkSync(
+                            filePath
+                        );
                     }
+
                 } catch (_) {}
 
-                console.log(
-                    "========== SLITHER DEBUG =========="
+                return reject(
+                    new Error(
+                        `Could not select Solidity compiler ${solidityVersion}: ${compilerError.message}`
+                    )
                 );
+            }
 
-                console.log(
-                    "Solidity version:",
-                    solidityVersion
+            console.log(
+                `Using Solidity compiler: ${solcExecutable}`
+            );
+
+            const slitherArgs = [
+                filePath,
+                "--solc",
+                solcExecutable
+            ];
+
+            if (
+                /\bimport\s+["']/.test(code)
+            ) {
+
+                slitherArgs.push(
+                    "--solc-args",
+                    "--base-path . --include-path node_modules"
                 );
+            }
 
-                console.log(
-                    "Compiler:",
-                    solcExecutable
-                );
+            slitherArgs.push(
+                "--json",
+                "-"
+            );
 
-                console.log(
-                    "Exit code:",
-                    error?.code
-                );
+            execFile(
+                SLITHER,
+                slitherArgs,
+                {
+                    env: {
+                        ...scannerEnv
+                    },
 
-                console.log(
-                    "Signal:",
-                    error?.signal
-                );
+                    cwd:
+                        path.dirname(
+                            filePath
+                        ),
 
-                console.log(
-                    "Killed:",
-                    error?.killed
-                );
+                    windowsHide: true,
 
-                console.log(
-                    "STDOUT:",
-                    stdout || "(empty)"
-                );
+                    maxBuffer:
+                        20 * 1024 * 1024,
 
-                console.log(
-                    "STDERR:",
-                    stderr || "(empty)"
-                );
+                    timeout: 60000
+                },
 
-                console.log(
-                    "==================================="
-                );
-
-                if (
-                    stdout &&
-                    stdout.trim()
-                ) {
+                (
+                    error,
+                    stdout,
+                    stderr
+                ) => {
 
                     try {
 
-                        const result =
-                            JSON.parse(stdout);
-
                         if (
-                            result?.success === false
+                            fs.existsSync(
+                                filePath
+                            )
+                        ) {
+
+                            fs.unlinkSync(
+                                filePath
+                            );
+                        }
+
+                    } catch (
+                        cleanupError
+                    ) {
+
+                        console.error(
+                            "Temporary file cleanup failed:",
+                            cleanupError.message
+                        );
+                    }
+
+                    console.log(
+                        "========== SLITHER DEBUG =========="
+                    );
+
+                    console.log(
+                        "Solidity version:",
+                        solidityVersion
+                    );
+
+                    console.log(
+                        "Compiler:",
+                        solcExecutable
+                    );
+
+                    console.log(
+                        "Exit code:",
+                        error?.code
+                    );
+
+                    console.log(
+                        "Signal:",
+                        error?.signal
+                    );
+
+                    console.log(
+                        "Killed:",
+                        error?.killed
+                    );
+
+                    console.log(
+                        "STDOUT:",
+                        stdout || "(empty)"
+                    );
+
+                    console.log(
+                        "STDERR:",
+                        stderr || "(empty)"
+                    );
+
+                    console.log(
+                        "==================================="
+                    );
+
+                    if (
+                        stdout &&
+                        stdout.trim()
+                    ) {
+
+                        try {
+
+                            const result =
+                                JSON.parse(
+                                    stdout
+                                );
+
+                            if (
+                                result?.success === false
+                            ) {
+
+                                return reject(
+                                    new Error(
+                                        result.error ||
+                                        "Slither reported an analysis error."
+                                    )
+                                );
+                            }
+
+                            const detectors =
+                                result?.results
+                                    ?.detectors || [];
+
+                            const findings =
+                                detectors.map(
+                                    (item) => ({
+
+                                        name:
+                                            item.check,
+
+                                        severity:
+                                            item.impact,
+
+                                        confidence:
+                                            item.confidence,
+
+                                        description:
+                                            item.description,
+
+                                        function:
+                                            item.elements?.find(
+                                                (element) =>
+                                                    element.type ===
+                                                    "function"
+                                            )?.name ||
+                                            null,
+
+                                        lines:
+                                            item.elements?.flatMap(
+                                                (element) =>
+                                                    element
+                                                        .source_mapping
+                                                        ?.lines ||
+                                                    []
+                                            ) || [],
+
+                                        reference:
+                                            item.reference
+                                    })
+                                );
+
+                            console.log(
+                                `Slither completed. Findings: ${findings.length}`
+                            );
+
+                            return resolve(
+                                findings
+                            );
+
+                        } catch (
+                            parseError
                         ) {
 
                             return reject(
                                 new Error(
-                                    result.error ||
-                                    "Slither reported an analysis error."
+                                    `Could not parse Slither output: ${parseError.message}`
                                 )
                             );
                         }
+                    }
 
-                        const findings =
-                            (
-                                result
-                                    ?.results
-                                    ?.detectors ||
-                                []
-                            ).map(
-                                (item) => ({
-                                    name:
-                                        item.check,
+                    if (error) {
 
-                                    severity:
-                                        item.impact,
-
-                                    confidence:
-                                        item.confidence,
-
-                                    description:
-                                        item.description,
-
-                                    function:
-                                        item.elements?.find(
-                                            (element) =>
-                                                element.type ===
-                                                "function"
-                                        )?.name ||
-                                        null,
-
-                                    lines:
-                                        item.elements?.flatMap(
-                                            (element) =>
-                                                element
-                                                    .source_mapping
-                                                    ?.lines ||
-                                                []
-                                        ) || [],
-
-                                    reference:
-                                        item.reference
-                                })
-                            );
-
-                        console.log(
-                            `Slither completed. Findings: ${findings.length}`
-                        );
-
-                        return resolve(
-                            findings
-                        );
-
-                    } catch (parseError) {
-
-                        console.error(
-                            "Could not parse Slither stdout as JSON:",
-                            parseError.message
+                        return reject(
+                            new Error(
+                                [
+                                    "Slither process failed.",
+                                    `Exit code: ${error.code ?? "unknown"}`,
+                                    `Signal: ${error.signal ?? "none"}`,
+                                    `STDERR: ${stderr || "(empty)"}`,
+                                    `STDOUT: ${stdout || "(empty)"}`
+                                ].join("\n")
+                            )
                         );
                     }
-                }
-
-                if (error) {
 
                     return reject(
                         new Error(
-                            [
-                                "Slither process failed.",
-                                `Exit code: ${error.code ?? "unknown"}`,
-                                `Signal: ${error.signal ?? "none"}`,
-                                `STDERR: ${stderr || "(empty)"}`,
-                                `STDOUT: ${stdout || "(empty)"}`
-                            ].join("\n")
+                            "Slither returned no usable output."
                         )
                     );
                 }
-
-                return reject(
-                    new Error(
-                        "Slither returned no usable output."
-                    )
-                );
-            }
-        );
-    });
+            );
+        }
+    );
 }
 
 // =====================================================
