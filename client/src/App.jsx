@@ -283,235 +283,181 @@ const securityScore = Math.max(
 );
 
 
+
     // =====================================================
     // DOWNLOAD SECURITY REPORT
     // =====================================================
 
  const downloadReport = () => {
-    if (!result) {
-        return;
-    }
-
-    const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4"
-    });
-
-    const pageWidth = 210;
-    const pageHeight = 297;
-    const margin = 18;
-    const contentWidth =
-        pageWidth - margin * 2;
-
-    let y = 20;
-
-    // =================================================
-    // DATA
-    // =================================================
-
-    const findings =
-        result.original?.findings || [];
-
-    const resolved =
-        result.reanalysis?.resolved || [];
-
-    const remaining =
-        result.reanalysis?.remaining || [];
-
-    const syntaxFix =
-        result.syntaxFix || null;
-
-    const aiExplanation =
-        result.ai?.explanation || "";
-
-    const fixedCode =
-        result.fixedCode || "";
-
-    // =================================================
-    // PAGE HELPERS
-    // =================================================
-
-    const addPage = () => {
-        pdf.addPage();
-        y = 20;
-    };
-
-    const ensureSpace = (height) => {
-        if (y + height > pageHeight - 20) {
-            addPage();
-        }
-    };
-
-    const heading = (
-        text,
-        size = 14
-    ) => {
-        ensureSpace(12);
-
-        pdf.setFont(
-            "helvetica",
-            "bold"
-        );
-
-        pdf.setFontSize(size);
-
-        pdf.setTextColor(
-            17,
-            24,
-            39
-        );
-
-        pdf.text(
-            text,
-            margin,
-            y
-        );
-
-        y +=
-            size >= 14
-                ? 9
-                : 7;
-    };
-
-    const paragraph = (
-        text,
-        size = 9
-    ) => {
-        if (!text) {
+    try {
+        if (!result) {
+            alert("Please analyze a Solidity contract first.");
             return;
         }
 
-        pdf.setFont(
-            "helvetica",
-            "normal"
-        );
+        const pdf = new jsPDF({
+            orientation: "portrait",
+            unit: "mm",
+            format: "a4"
+        });
 
-        pdf.setFontSize(size);
+        const pageWidth = 210;
+        const pageHeight = 297;
+        const margin = 18;
+        const contentWidth = pageWidth - margin * 2;
 
-        const lines =
-            pdf.splitTextToSize(
-                String(text),
-                contentWidth
+        let y = 20;
+
+        const findings =
+            result.original?.findings || [];
+
+        const resolved =
+            result.reanalysis?.resolved || [];
+
+        const remaining =
+            result.reanalysis?.remaining || [];
+
+        const addPage = () => {
+            pdf.addPage();
+            y = 20;
+        };
+
+        const checkSpace = (height = 10) => {
+            if (y + height > pageHeight - 20) {
+                addPage();
+            }
+        };
+
+        const addHeading = (
+            text,
+            size = 14
+        ) => {
+            checkSpace(15);
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
             );
 
-        const height =
-            lines.length * 4.4 + 4;
+            pdf.setFontSize(size);
 
-        ensureSpace(height);
+            pdf.setTextColor(
+                17,
+                24,
+                39
+            );
 
-        pdf.text(
-            lines,
-            margin,
-            y
-        );
+            pdf.text(
+                String(text),
+                margin,
+                y
+            );
 
-        y += height;
-    };
+            y += 9;
+        };
 
-    const label = (
-        name,
-        value
-    ) => {
-        ensureSpace(6);
+        const addParagraph = (
+            text,
+            size = 9
+        ) => {
+            if (
+                text === undefined ||
+                text === null ||
+                String(text).trim() === ""
+            ) {
+                return;
+            }
 
-        pdf.setFont(
-            "helvetica",
-            "bold"
-        );
+            pdf.setFont(
+                "helvetica",
+                "normal"
+            );
 
-        pdf.setFontSize(9);
+            pdf.setFontSize(size);
 
-        pdf.setTextColor(
+            const lines =
+                pdf.splitTextToSize(
+                    String(text),
+                    contentWidth
+                );
+
+            const lineHeight = 4.5;
+            const requiredHeight =
+                lines.length *
+                lineHeight +
+                5;
+
+            checkSpace(requiredHeight);
+
+            pdf.text(
+                lines,
+                margin,
+                y
+            );
+
+            y += requiredHeight;
+        };
+
+        const addLabel = (
+            name,
+            value
+        ) => {
+            checkSpace(7);
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setFontSize(9);
+
+            pdf.text(
+                `${name}:`,
+                margin,
+                y
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "normal"
+            );
+
+            const valueLines =
+                pdf.splitTextToSize(
+                    String(
+                        value ?? "N/A"
+                    ),
+                    contentWidth - 32
+                );
+
+            pdf.text(
+                valueLines,
+                margin + 32,
+                y
+            );
+
+            y +=
+                Math.max(
+                    5,
+                    valueLines.length * 4
+                );
+        };
+
+        // =================================================
+        // PAGE 1 - SUMMARY
+        // =================================================
+
+        pdf.setFillColor(
             17,
             24,
             39
         );
 
-        pdf.text(
-            `${name}:`,
-            margin,
-            y
-        );
-
-        pdf.setFont(
-            "helvetica",
-            "normal"
-        );
-
-        pdf.text(
-            String(value),
-            margin + 30,
-            y
-        );
-
-        y += 5.5;
-    };
-
-    const codeBlock = (
-        code
-    ) => {
-        if (!code) {
-            return;
-        }
-
-        const rawLines =
-            String(code)
-                .replace(/\r\n/g, "\n")
-                .split("\n");
-
-        const wrappedLines = [];
-
-        pdf.setFont(
-            "courier",
-            "normal"
-        );
-
-        pdf.setFontSize(7.5);
-
-        rawLines.forEach(
-            (line) => {
-
-                const parts =
-                    pdf.splitTextToSize(
-                        line || " ",
-                        contentWidth - 10
-                    );
-
-                parts.forEach(
-                    (part) => {
-                        wrappedLines.push(
-                            part
-                        );
-                    }
-                );
-            }
-        );
-
-        const lineHeight = 3.8;
-        const availableHeight =
-            pageHeight - y - 20;
-
-        const estimatedHeight =
-            wrappedLines.length *
-            lineHeight + 12;
-
-        pdf.setFillColor(
-            31,
-            41,
-            55
-        );
-
-        pdf.roundedRect(
-            margin,
-            y,
-            contentWidth,
-            Math.min(
-                estimatedHeight,
-                availableHeight
-            ),
-            3,
-            3,
+        pdf.rect(
+            0,
+            0,
+            pageWidth,
+            42,
             "F"
         );
 
@@ -521,723 +467,70 @@ const securityScore = Math.max(
             255
         );
 
-        let codeY = y + 7;
+        pdf.setFont(
+            "helvetica",
+            "bold"
+        );
 
-        for (
-            let i = 0;
-            i < wrappedLines.length;
-            i++
-        ) {
+        pdf.setFontSize(21);
 
-            if (
-                codeY >
-                pageHeight - 15
-            ) {
+        pdf.text(
+            "Smart Contract FixGPT",
+            margin,
+            18
+        );
 
-                addPage();
+        pdf.setFont(
+            "helvetica",
+            "normal"
+        );
 
-                pdf.setFillColor(
-                    31,
-                    41,
-                    55
-                );
+        pdf.setFontSize(10);
 
-                pdf.roundedRect(
-                    margin,
-                    y,
-                    contentWidth,
-                    pageHeight - y - 20,
-                    3,
-                    3,
-                    "F"
-                );
-
-                pdf.setFont(
-                    "courier",
-                    "normal"
-                );
-
-                pdf.setFontSize(7.5);
-
-                pdf.setTextColor(
-                    255,
-                    255,
-                    255
-                );
-
-                codeY =
-                    y + 7;
-            }
-
-            pdf.text(
-                wrappedLines[i],
-                margin + 5,
-                codeY
-            );
-
-            codeY +=
-                lineHeight;
-        }
-
-        y =
-            Math.min(
-                y + estimatedHeight,
-                pageHeight - 20
-            ) + 5;
+        pdf.text(
+            "AI-Powered Smart Contract Security Report | EtherAuthority Internship",
+            margin,
+            27
+        );
 
         pdf.setTextColor(
             17,
             24,
             39
         );
-    };
 
-    const extractExplanation = (
-        text
-    ) => {
-        if (!text) {
-            return "";
-        }
+        y = 55;
 
-        const match =
-            text.match(
-                /EXPLANATION:\s*([\s\S]*?)(?:\n\s*FIXED CODE:|$)/i
-            );
-
-        return (
-            match
-                ? match[1].trim()
-                : String(text).trim()
-        );
-    };
-
-    const cleanAIText = (
-        text
-    ) => {
-
-        if (!text) {
-            return "";
-        }
-
-        let cleaned =
-            String(text);
-
-        cleaned =
-            cleaned.replace(
-                /###\s*4\.\s*(Complete\s*)?Corrected Solidity (Contract|Code)[\s\S]*$/i,
-                ""
-            );
-
-        cleaned =
-            cleaned.replace(
-                /```[\s\S]*?```/g,
-                ""
-            );
-
-        cleaned =
-            cleaned.replace(
-                /^#{1,6}\s*/gm,
-                ""
-            );
-
-        cleaned =
-            cleaned.replace(
-                /^---+$/gm,
-                ""
-            );
-
-        return cleaned.trim();
-    };
-
-    // =================================================
-    // PAGE 1 - SUMMARY
-    // =================================================
-
-    pdf.setFillColor(
-        17,
-        24,
-        39
-    );
-
-    pdf.rect(
-        0,
-        0,
-        pageWidth,
-        42,
-        "F"
-    );
-
-    pdf.setTextColor(
-        255,
-        255,
-        255
-    );
-
-    pdf.setFont(
-        "helvetica",
-        "bold"
-    );
-
-    pdf.setFontSize(21);
-
-    pdf.text(
-        "Smart Contract FixGPT",
-        margin,
-        18
-    );
-
-    pdf.setFont(
-        "helvetica",
-        "normal"
-    );
-
-    pdf.setFontSize(10);
-
-    pdf.text(
-        "AI-Powered Smart Contract Security Report | EtherAuthority Internship",
-        margin,
-        27
-    );
-
-    pdf.setTextColor(
-        17,
-        24,
-        39
-    );
-
-    y = 55;
-
-    heading(
-        "Audit Summary"
-    );
-
-    label(
-        "Contract",
-        fileName ||
-        "Pasted Solidity Contract"
-    );
-
-    label(
-        "Findings Before",
-        result.original?.count ?? 0
-    );
-
-    label(
-        "Findings After",
-        result.reanalysis?.count ?? 0
-    );
-
-    label(
-        "Resolved",
-        resolved.length
-    );
-
-    y += 5;
-
-    // =================================================
-    // SECURITY SCORE
-    // =================================================
-
-    ensureSpace(30);
-
-    pdf.setFillColor(
-        243,
-        244,
-        246
-    );
-
-    pdf.roundedRect(
-        margin,
-        y,
-        contentWidth,
-        30,
-        4,
-        4,
-        "F"
-    );
-
-    pdf.setFont(
-        "helvetica",
-        "bold"
-    );
-
-    pdf.setFontSize(11);
-
-    pdf.text(
-        "Security Score",
-        margin + 8,
-        y + 10
-    );
-
-    pdf.setFontSize(24);
-
-    pdf.text(
-        `${securityScore}/100`,
-        margin + 8,
-        y + 23
-    );
-
-    pdf.setFont(
-        "helvetica",
-        "normal"
-    );
-
-    pdf.setFontSize(8.5);
-
-    pdf.text(
-        "Project-specific score based on Slither findings",
-        margin + 58,
-        y + 17
-    );
-
-    y += 40;
-
-    // =================================================
-    // FINDING SUMMARY
-    // =================================================
-
-    heading(
-        "Finding Summary"
-    );
-
-    const cards = [
-        ["High", highCount],
-        ["Medium", mediumCount],
-        ["Low", lowCount],
-        ["Informational", infoCount],
-        ["Optimization", optimizationCount]
-    ];
-
-    const cardGap = 3;
-
-    const cardWidth =
-        (
-            contentWidth -
-            cardGap * 4
-        ) / 5;
-
-    cards.forEach(
-        ([name, value], index) => {
-
-            const x =
-                margin +
-                index *
-                (
-                    cardWidth +
-                    cardGap
-                );
-
-            pdf.setFillColor(
-                247,
-                247,
-                247
-            );
-
-            pdf.roundedRect(
-                x,
-                y,
-                cardWidth,
-                23,
-                3,
-                3,
-                "F"
-            );
-
-            pdf.setFont(
-                "helvetica",
-                "bold"
-            );
-
-            pdf.setFontSize(15);
-
-            pdf.text(
-                String(value),
-                x +
-                cardWidth / 2,
-                y + 11,
-                {
-                    align: "center"
-                }
-            );
-
-            pdf.setFont(
-                "helvetica",
-                "normal"
-            );
-
-            pdf.setFontSize(6.5);
-
-            pdf.text(
-                name,
-                x +
-                cardWidth / 2,
-                y + 18,
-                {
-                    align: "center"
-                }
-            );
-        }
-    );
-
-    y += 34;
-
-    // =================================================
-    // WORKFLOW
-    // =================================================
-
-    heading(
-        "Workflow"
-    );
-
-    pdf.setFont(
-        "helvetica",
-        "bold"
-    );
-
-    pdf.setFontSize(10);
-
-    pdf.text(
-        "Detect  ->  Explain  ->  Fix  ->  Re-Analyze  ->  Report",
-        margin,
-        y
-    );
-
-    y += 8;
-
-    paragraph(
-        "This report combines Slither static analysis with AI-assisted remediation and independent re-analysis of the proposed fixed contract.",
-        9
-    );
-
-    // =================================================
-    // CLEAN CONTRACT MESSAGE
-    // No extra page when there are no findings.
-    // =================================================
-
-    if (
-        findings.length === 0
-    ) {
-
-        heading(
-            "Security Findings"
+        addHeading(
+            "Audit Summary"
         );
 
-        paragraph(
-            "No security findings were detected by Slither."
-        );
-    }
-
-    // =================================================
-    // PAGE 2 - FINDINGS
-    // Only create this page if findings exist.
-    // =================================================
-
-    if (
-        findings.length > 0
-    ) {
-
-        addPage();
-
-        heading(
-            "Security Findings"
+        addLabel(
+            "Contract",
+            fileName ||
+            "Pasted Solidity Contract"
         );
 
-        findings.forEach(
-            (finding, index) => {
-
-                ensureSpace(55);
-
-                pdf.setFillColor(
-                    243,
-                    244,
-                    246
-                );
-
-                pdf.roundedRect(
-                    margin,
-                    y,
-                    contentWidth,
-                    9,
-                    2,
-                    2,
-                    "F"
-                );
-
-                pdf.setFont(
-                    "helvetica",
-                    "bold"
-                );
-
-                pdf.setFontSize(10.5);
-
-                pdf.text(
-                    `${index + 1}. ${finding.name}`,
-                    margin + 5,
-                    y + 6
-                );
-
-                y += 13;
-
-                label(
-                    "Severity",
-                    finding.severity
-                );
-
-                label(
-                    "Confidence",
-                    finding.confidence
-                );
-
-                label(
-                    "Function",
-                    finding.function || "N/A"
-                );
-
-                const uniqueLines = [
-                    ...new Set(
-                        finding.lines || []
-                    )
-                ];
-
-                label(
-                    "Source Lines",
-                    uniqueLines.length
-                        ? uniqueLines.join(", ")
-                        : "N/A"
-                );
-
-                pdf.setFont(
-                    "helvetica",
-                    "bold"
-                );
-
-                pdf.setFontSize(8.5);
-
-                ensureSpace(8);
-
-                pdf.text(
-                    "Description",
-                    margin,
-                    y
-                );
-
-                y += 4.5;
-
-                paragraph(
-                    finding.description,
-                    8.5
-                );
-
-                const pdfFindingDetails =
-                    getFindingDetails(
-                        finding
-                    );
-
-                label(
-                    "Recommendation",
-                    pdfFindingDetails.recommendation
-                );
-
-                pdf.setFont(
-                    "helvetica",
-                    "bold"
-                );
-
-                pdf.setFontSize(8.5);
-
-                ensureSpace(8);
-
-                pdf.text(
-                    "How to Resolve",
-                    margin,
-                    y
-                );
-
-                y += 4.5;
-
-                paragraph(
-                    pdfFindingDetails.resolution,
-                    8.5
-                );
-
-                if (
-                    finding.reference
-                ) {
-
-                    pdf.setFont(
-                        "helvetica",
-                        "bold"
-                    );
-
-                    pdf.setFontSize(8.5);
-
-                    ensureSpace(8);
-
-                    pdf.text(
-                        "Reference",
-                        margin,
-                        y
-                    );
-
-                    y += 4.5;
-
-                    pdf.setFont(
-                        "helvetica",
-                        "normal"
-                    );
-
-                    pdf.setFontSize(7.5);
-
-                    const refLines =
-                        pdf.splitTextToSize(
-                            finding.reference,
-                            contentWidth
-                        );
-
-                    ensureSpace(
-                        refLines.length * 3.8 + 5
-                    );
-
-                    pdf.text(
-                        refLines,
-                        margin,
-                        y
-                    );
-
-                    y +=
-                        refLines.length * 3.8 +
-                        5;
-                }
-
-                if (
-                    index <
-                    findings.length - 1
-                ) {
-
-                    pdf.setDrawColor(
-                        220,
-                        220,
-                        220
-                    );
-
-                    pdf.line(
-                        margin,
-                        y,
-                        pageWidth - margin,
-                        y
-                    );
-
-                    y += 7;
-                }
-            }
-        );
-    }
-
-    // =================================================
-    // AI SYNTAX CORRECTION
-    // Only create if syntax repair happened.
-    // =================================================
-
-    if (
-        syntaxFix?.fixedCode
-    ) {
-
-        addPage();
-
-        heading(
-            "AI Syntax Correction"
+        addLabel(
+            "Findings Before",
+            result.original?.count ?? 0
         );
 
-        paragraph(
-            "Gemini corrected the compilation or syntax error before security analysis.",
-            8.5
+        addLabel(
+            "Findings After",
+            result.reanalysis?.count ?? 0
         );
 
-        codeBlock(
-            syntaxFix.fixedCode
+        addLabel(
+            "Resolved",
+            resolved.length
         );
 
-        if (
-            syntaxFix.explanation
-        ) {
+        y += 5;
 
-            heading(
-                "What Was Corrected"
-            );
+        // Score
 
-            paragraph(
-                extractExplanation(
-                    syntaxFix.explanation
-                ),
-                8.5
-            );
-        }
-    }
-
-    // =================================================
-    // AI SECURITY ANALYSIS
-    // Only create if AI analysis exists.
-    // =================================================
-
-    if (
-        aiExplanation
-    ) {
-
-        addPage();
-
-        heading(
-            "AI Security Analysis"
-        );
-
-        paragraph(
-            cleanAIText(
-                aiExplanation
-            ),
-            8.7
-        );
-    }
-
-    // =================================================
-    // AI GENERATED FIX
-    // Only create if fixed code exists.
-    // =================================================
-
-    if (
-        fixedCode
-    ) {
-
-        addPage();
-
-        heading(
-            "AI Generated Fix"
-        );
-
-        paragraph(
-            "AI-generated remediation proposal. The proposed code was independently re-analyzed using Slither.",
-            8.5
-        );
-
-        codeBlock(
-            fixedCode
-        );
-    }
-
-    // =================================================
-    // RE-ANALYSIS
-    // Only create if re-analysis exists.
-    // =================================================
-
-    if (
-        result.reanalysis
-    ) {
-
-        addPage();
-
-        heading(
-            "Re-Analysis Results"
-        );
-
-        ensureSpace(25);
+        checkSpace(32);
 
         pdf.setFillColor(
             243,
@@ -1249,10 +542,139 @@ const securityScore = Math.max(
             margin,
             y,
             contentWidth,
-            24,
-            3,
-            3,
+            30,
+            4,
+            4,
             "F"
+        );
+
+        pdf.setFont(
+            "helvetica",
+            "bold"
+        );
+
+        pdf.setFontSize(11);
+
+        pdf.text(
+            "Security Score",
+            margin + 8,
+            y + 10
+        );
+
+        pdf.setFontSize(24);
+
+        pdf.text(
+            `${securityScore}/100`,
+            margin + 8,
+            y + 23
+        );
+
+        pdf.setFont(
+            "helvetica",
+            "normal"
+        );
+
+        pdf.setFontSize(8.5);
+
+        pdf.text(
+            "Project-defined score based on Slither findings.",
+            margin + 58,
+            y + 17
+        );
+
+        y += 40;
+
+        // Finding summary
+
+        addHeading(
+            "Finding Summary"
+        );
+
+        const cards = [
+            ["High", highCount],
+            ["Medium", mediumCount],
+            ["Low", lowCount],
+            ["Informational", infoCount],
+            ["Optimization", optimizationCount]
+        ];
+
+        const cardGap = 3;
+
+        const cardWidth =
+            (
+                contentWidth -
+                cardGap * 4
+            ) / 5;
+
+        cards.forEach(
+            ([name, value], index) => {
+
+                const x =
+                    margin +
+                    index *
+                    (
+                        cardWidth +
+                        cardGap
+                    );
+
+                pdf.setFillColor(
+                    247,
+                    247,
+                    247
+                );
+
+                pdf.roundedRect(
+                    x,
+                    y,
+                    cardWidth,
+                    23,
+                    3,
+                    3,
+                    "F"
+                );
+
+                pdf.setFont(
+                    "helvetica",
+                    "bold"
+                );
+
+                pdf.setFontSize(15);
+
+                pdf.text(
+                    String(value),
+                    x +
+                    cardWidth / 2,
+                    y + 11,
+                    {
+                        align:
+                            "center"
+                    }
+                );
+
+                pdf.setFont(
+                    "helvetica",
+                    "normal"
+                );
+
+                pdf.setFontSize(6.5);
+
+                pdf.text(
+                    name,
+                    x +
+                    cardWidth / 2,
+                    y + 18,
+                    {
+                        align:
+                            "center"
+                    }
+                );
+            }
+        );
+
+        y += 34;
+
+        addHeading(
+            "Workflow"
         );
 
         pdf.setFont(
@@ -1263,50 +685,49 @@ const securityScore = Math.max(
         pdf.setFontSize(10);
 
         pdf.text(
-            `Before: ${
-                result.original?.count ?? 0
-            }`,
-            margin + 8,
-            y + 14
+            "Detect  ->  Explain  ->  Fix  ->  Re-Analyze  ->  Report",
+            margin,
+            y
         );
 
-        pdf.text(
-            `After: ${
-                result.reanalysis?.count ?? 0
-            }`,
-            margin + 68,
-            y + 14
+        y += 8;
+
+        addParagraph(
+            "This report combines Slither static analysis with AI-assisted remediation and independent re-analysis of the proposed fixed contract.",
+            9
         );
 
-        pdf.text(
-            `Resolved: ${
-                resolved.length
-            }`,
-            margin + 125,
-            y + 14
-        );
+        // =================================================
+        // FINDINGS
+        // =================================================
 
-        y += 35;
+        if (findings.length > 0) {
 
-        // -------------------------------------------------
-        // RESOLVED
-        // -------------------------------------------------
+            addPage();
 
-        heading(
-            "Resolved Findings"
-        );
+            addHeading(
+                "Security Findings"
+            );
 
-        if (
-            resolved.length > 0
-        ) {
+            findings.forEach(
+                (finding, index) => {
 
-            resolved.forEach(
-                (name) => {
+                    checkSpace(45);
 
-                    pdf.setTextColor(
-                        22,
-                        101,
-                        52
+                    pdf.setFillColor(
+                        243,
+                        244,
+                        246
+                    );
+
+                    pdf.roundedRect(
+                        margin,
+                        y,
+                        contentWidth,
+                        9,
+                        2,
+                        2,
+                        "F"
                     );
 
                     pdf.setFont(
@@ -1314,24 +735,496 @@ const securityScore = Math.max(
                         "bold"
                     );
 
-                    pdf.setFontSize(10);
-
-                    ensureSpace(7);
+                    pdf.setFontSize(
+                        10.5
+                    );
 
                     pdf.text(
-                        `✓ ${name}`,
-                        margin,
+                        `${index + 1}. ${finding.name}`,
+                        margin + 5,
+                        y + 6
+                    );
+
+                    y += 13;
+
+                    addLabel(
+                        "Severity",
+                        finding.severity
+                    );
+
+                    addLabel(
+                        "Confidence",
+                        finding.confidence
+                    );
+
+                    addLabel(
+                        "Function",
+                        finding.function ||
+                        "N/A"
+                    );
+
+                    const uniqueLines = [
+                        ...new Set(
+                            finding.lines || []
+                        )
+                    ];
+
+                    addLabel(
+                        "Source Lines",
+                        uniqueLines.length > 0
+                            ? uniqueLines.join(", ")
+                            : "N/A"
+                    );
+
+                    addHeading(
+                        "Description",
+                        9
+                    );
+
+                    addParagraph(
+                        finding.description,
+                        8.5
+                    );
+
+                    const details =
+                        getFindingDetails(
+                            finding
+                        );
+
+                    addHeading(
+                        "Recommendation",
+                        9
+                    );
+
+                    addParagraph(
+                        details.recommendation,
+                        8.5
+                    );
+
+                    addHeading(
+                        "How to Resolve",
+                        9
+                    );
+
+                    addParagraph(
+                        details.resolution,
+                        8.5
+                    );
+
+                    if (
+                        finding.reference
+                    ) {
+                        addHeading(
+                            "Reference",
+                            9
+                        );
+
+                        addParagraph(
+                            finding.reference,
+                            7.5
+                        );
+                    }
+
+                    if (
+                        index <
+                        findings.length - 1
+                    ) {
+                        checkSpace(8);
+
+                        pdf.setDrawColor(
+                            220,
+                            220,
+                            220
+                        );
+
+                        pdf.line(
+                            margin,
+                            y,
+                            pageWidth - margin,
+                            y
+                        );
+
+                        y += 7;
+                    }
+                }
+            );
+        }
+
+        // =================================================
+        // AI SECURITY ANALYSIS
+        // =================================================
+
+        if (
+            result.ai?.explanation
+        ) {
+
+            addPage();
+
+            addHeading(
+                "AI Security Analysis"
+            );
+
+            let aiText =
+                String(
+                    result.ai.explanation
+                );
+
+            aiText =
+                aiText.replace(
+                    /```[\s\S]*?```/g,
+                    ""
+                );
+
+            aiText =
+                aiText.replace(
+                    /^#{1,6}\s*/gm,
+                    ""
+                );
+
+            aiText =
+                aiText.replace(
+                    /^EXPLANATION:\s*/i,
+                    ""
+                );
+
+            aiText =
+                aiText.replace(
+                    /\bFIXED CODE:\s*$/i,
+                    ""
+                );
+
+            aiText =
+                aiText.trim();
+
+            addParagraph(
+                aiText,
+                8.7
+            );
+        }
+
+        // =================================================
+        // AI GENERATED FIX
+        // =================================================
+
+        if (
+            result.fixedCode
+        ) {
+
+            addPage();
+
+            addHeading(
+                "AI Generated Fix"
+            );
+
+            addParagraph(
+                "AI-generated remediation proposal. The corrected contract was independently re-analyzed using Slither.",
+                8.5
+            );
+
+            const codeLines =
+                String(
+                    result.fixedCode
+                ).split("\n");
+
+            const lineHeight = 4;
+
+            codeLines.forEach(
+                (line, index) => {
+
+                    if (
+                        y >
+                        pageHeight - 25
+                    ) {
+                        addPage();
+
+                        addHeading(
+                            "AI Generated Fix - Continued"
+                        );
+                    }
+
+                    const wrapped =
+                        pdf.splitTextToSize(
+                            line || " ",
+                            contentWidth - 10
+                        );
+
+                    checkSpace(
+                        wrapped.length *
+                        lineHeight +
+                        2
+                    );
+
+                    pdf.setFillColor(
+                        31,
+                        41,
+                        55
+                    );
+
+                    pdf.setFont(
+                        "courier",
+                        "normal"
+                    );
+
+                    pdf.setFontSize(
+                        7.2
+                    );
+
+                    pdf.setTextColor(
+                        255,
+                        255,
+                        255
+                    );
+
+                    pdf.text(
+                        wrapped,
+                        margin + 5,
                         y
                     );
 
-                    y += 7;
+                    y +=
+                        wrapped.length *
+                        lineHeight;
                 }
             );
 
-        } else {
+            pdf.setTextColor(
+                17,
+                24,
+                39
+            );
+        }
 
-            paragraph(
-                "No findings were resolved."
+        // =================================================
+        // RE-ANALYSIS
+        // =================================================
+
+        if (
+            result.reanalysis
+        ) {
+
+            addPage();
+
+            addHeading(
+                "Re-Analysis Results"
+            );
+
+            checkSpace(25);
+
+            pdf.setFillColor(
+                243,
+                244,
+                246
+            );
+
+            pdf.roundedRect(
+                margin,
+                y,
+                contentWidth,
+                24,
+                3,
+                3,
+                "F"
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setFontSize(10);
+
+            pdf.text(
+                `Before: ${
+                    result.original?.count ?? 0
+                }`,
+                margin + 8,
+                y + 14
+            );
+
+            pdf.text(
+                `After: ${
+                    result.reanalysis?.count ?? 0
+                }`,
+                margin + 68,
+                y + 14
+            );
+
+            pdf.text(
+                `Resolved: ${
+                    resolved.length
+                }`,
+                margin + 125,
+                y + 14
+            );
+
+            y += 35;
+
+            addHeading(
+                "Resolved Findings"
+            );
+
+            if (
+                resolved.length > 0
+            ) {
+
+                resolved.forEach(
+                    (name) => {
+
+                        checkSpace(8);
+
+                        pdf.setFont(
+                            "helvetica",
+                            "bold"
+                        );
+
+                        pdf.setFontSize(9.5);
+
+                        pdf.setTextColor(
+                            22,
+                            101,
+                            52
+                        );
+
+                        pdf.text(
+                            `[Resolved] ${name}`,
+                            margin,
+                            y
+                        );
+
+                        y += 7;
+                    }
+                );
+
+            } else {
+
+                addParagraph(
+                    "No findings were resolved.",
+                    9
+                );
+            }
+
+            pdf.setTextColor(
+                17,
+                24,
+                39
+            );
+
+            y += 6;
+
+            addHeading(
+                "Remaining Findings / Review"
+            );
+
+            if (
+                remaining.length > 0
+            ) {
+
+                remaining.forEach(
+                    (name) => {
+
+                        checkSpace(8);
+
+                        pdf.setFont(
+                            "helvetica",
+                            "bold"
+                        );
+
+                        pdf.setFontSize(9.5);
+
+                        pdf.setTextColor(
+                            146,
+                            64,
+                            14
+                        );
+
+                        pdf.text(
+                            `[Review] ${name}`,
+                            margin,
+                            y
+                        );
+
+                        y += 7;
+                    }
+                );
+
+            } else {
+
+                addParagraph(
+                    "No remaining findings.",
+                    9
+                );
+            }
+
+            pdf.setTextColor(
+                17,
+                24,
+                39
+            );
+        }
+
+        // =================================================
+        // DISCLAIMER
+        // =================================================
+
+        addPage();
+
+        addHeading(
+            "Disclaimer"
+        );
+
+        addParagraph(
+            "This report is generated using static analysis and AI-assisted remediation. AI-generated fixes are suggestions and must be manually reviewed, tested, and independently validated before deployment. A successful re-analysis does not guarantee that the smart contract is completely secure.",
+            8.5
+        );
+
+        // =================================================
+        // FOOTERS
+        // =================================================
+
+        const totalPages =
+            pdf.internal.getNumberOfPages();
+
+        for (
+            let page = 1;
+            page <= totalPages;
+            page++
+        ) {
+
+            pdf.setPage(page);
+
+            pdf.setFont(
+                "helvetica",
+                "normal"
+            );
+
+            pdf.setFontSize(7.5);
+
+            pdf.setTextColor(
+                107,
+                114,
+                128
+            );
+
+            pdf.text(
+                `Smart Contract FixGPT | EtherAuthority Internship | Developed by Vasanthi | Page ${page} of ${totalPages}`,
+                pageWidth / 2,
+                pageHeight - 11,
+                {
+                    align:
+                        "center"
+                }
+            );
+
+            pdf.setFontSize(6.5);
+
+            pdf.text(
+                "GitHub: github.com/mummanavasanthi/smart-contract-fixgpt | LinkedIn: linkedin.com/in/vasanthi-mummana-49bba329/",
+                pageWidth / 2,
+                pageHeight - 5,
+                {
+                    align:
+                        "center"
+                }
             );
         }
 
@@ -1341,142 +1234,28 @@ const securityScore = Math.max(
             39
         );
 
-        y += 6;
+        // =================================================
+        // DOWNLOAD
+        // =================================================
 
-        // -------------------------------------------------
-        // REMAINING
-        // -------------------------------------------------
-
-        heading(
-            "Remaining Findings / Review"
+        pdf.save(
+            "Smart-Contract-FixGPT-Report.pdf"
         );
 
-        if (
-            remaining.length > 0
-        ) {
+    } catch (error) {
 
-            remaining.forEach(
-                (name) => {
+        console.error(
+            "PDF generation failed:",
+            error
+        );
 
-                    pdf.setTextColor(
-                        146,
-                        64,
-                        14
-                    );
-
-                    pdf.setFont(
-                        "helvetica",
-                        "bold"
-                    );
-
-                    pdf.setFontSize(10);
-
-                    ensureSpace(7);
-
-                    pdf.text(
-                        `! ${name}`,
-                        margin,
-                        y
-                    );
-
-                    y += 7;
-                }
-            );
-
-        } else {
-
-            paragraph(
-                "No remaining findings."
-            );
-        }
-
-        pdf.setTextColor(
-            17,
-            24,
-            39
+        alert(
+            `Unable to generate PDF: ${
+                error?.message ||
+                "Unknown error"
+            }`
         );
     }
-
-    // =================================================
-    // DISCLAIMER
-    // Always present, but never as an empty page.
-    // =================================================
-
-    y += 8;
-
-    ensureSpace(35);
-
-    heading(
-        "Disclaimer"
-    );
-
-    paragraph(
-        "This report is generated using static analysis and AI-assisted remediation. AI-generated fixes are suggestions and must be manually reviewed, tested, and independently validated before deployment. A successful re-analysis does not guarantee that the smart contract is completely secure.",
-        8.5
-    );
-
-    // =================================================
-    // FOOTERS
-    // =================================================
-
-    const totalPages =
-        pdf.internal.getNumberOfPages();
-
-    for (
-        let page = 1;
-        page <= totalPages;
-        page++
-    ) {
-
-        pdf.setPage(page);
-
-        pdf.setFont(
-            "helvetica",
-            "normal"
-        );
-
-        pdf.setFontSize(7.5);
-
-        pdf.setTextColor(
-            107,
-            114,
-            128
-        );
-
-        pdf.text(
-            `Smart Contract FixGPT | EtherAuthority Internship | Developed by Vasanthi | Page ${page} of ${totalPages}`,
-            pageWidth / 2,
-            pageHeight - 11,
-            {
-                align: "center"
-            }
-        );
-
-        pdf.setFontSize(6.5);
-
-        pdf.text(
-            "GitHub: github.com/mummanavasanthi/smart-contract-fixgpt | LinkedIn: linkedin.com/in/vasanthi-mummana-49bba3298/",
-            pageWidth / 2,
-            pageHeight - 5,
-            {
-                align: "center"
-            }
-        );
-    }
-
-    pdf.setTextColor(
-        17,
-        24,
-        39
-    );
-
-    // =================================================
-    // SAVE
-    // =================================================
-
-    pdf.save(
-        "Smart-Contract-FixGPT-Report.pdf"
-    );
 };
 
 
