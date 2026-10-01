@@ -940,7 +940,6 @@ Complete corrected Solidity contract.
             }
         }
     }
-
     throw new Error(
         `All Gemini syntax repair attempts failed. Last error: ${
             lastError?.message ||
@@ -957,7 +956,6 @@ async function generateFix(
     code,
     finding
 ) {
-
     if (!process.env.GEMINI_API_KEY) {
         throw new Error(
             "GEMINI_API_KEY is not configured on the server."
@@ -984,10 +982,12 @@ ${code}
 Your task:
 1. Explain the vulnerability briefly.
 2. Explain the security impact.
-3. Fix the vulnerability.
+3. Fix the detected vulnerability.
 4. Preserve the original contract functionality.
-5. Return the complete corrected Solidity contract.
-6. Do not remove existing functions or important functionality.
+5. Do not remove existing functions or important functionality.
+6. Do not introduce unrelated changes.
+7. Return the complete corrected Solidity contract.
+8. Make sure the corrected contract is valid Solidity and compiles successfully.
 
 Return your response in this format:
 
@@ -996,61 +996,34 @@ Brief explanation of the vulnerability and security impact.
 
 FIXED CODE:
 Complete corrected Solidity contract.
-
-The corrected contract may be inside a Solidity code block or returned as plain Solidity code.
 `;
 
-    const delays = [
+    const retryDelays = [
         2000,
-        4000,
-        8000
+        5000
     ];
 
     let lastError = null;
 
     for (
         let modelIndex = 0;
-        modelIndex <
-        GEMINI_MODELS.length;
+        modelIndex < GEMINI_MODELS.length;
         modelIndex++
     ) {
-
         const model =
-            GEMINI_MODELS[
-                modelIndex
-            ];
+            GEMINI_MODELS[modelIndex];
 
         for (
             let attempt = 1;
             attempt <= 2;
             attempt++
         ) {
-
             let timeoutId = null;
 
             try {
-
                 console.log(
-                    `Trying Gemini model: ${model}, attempt ${attempt}/2`
+                    `Trying Gemini security fix: ${model} (attempt ${attempt}/2)`
                 );
-
-                const timeoutPromise =
-                    new Promise(
-                        (_, reject) => {
-
-                            timeoutId =
-                                setTimeout(
-                                    () => {
-                                        reject(
-                                            new Error(
-                                                `Gemini timeout after 20 seconds (${model})`
-                                            )
-                                        );
-                                    },
-                                    20000
-                                );
-                        }
-                    );
 
                 const genAI =
                     new GoogleGenerativeAI(
@@ -1061,6 +1034,23 @@ The corrected contract may be inside a Solidity code block or returned as plain 
                     genAI.getGenerativeModel({
                         model
                     });
+
+                const timeoutPromise =
+                    new Promise(
+                        (_, reject) => {
+                            timeoutId =
+                                setTimeout(
+                                    () => {
+                                        reject(
+                                            new Error(
+                                                `Gemini timeout after 45 seconds (${model})`
+                                            )
+                                        );
+                                    },
+                                    45000
+                                );
+                        }
+                    );
 
                 const aiPromise =
                     modelClient.generateContent(
@@ -1074,12 +1064,10 @@ The corrected contract may be inside a Solidity code block or returned as plain 
                     ]);
 
                 const text =
-                    response
-                        ?.response
-                        ?.text?.() ||
+                    response?.response?.text?.() ||
                     "";
 
-                if (!text) {
+                if (!text.trim()) {
                     throw new Error(
                         "Gemini returned an empty response."
                     );
@@ -1093,7 +1081,6 @@ The corrected contract may be inside a Solidity code block or returned as plain 
                     extractCode(text);
 
                 if (!fixedCode) {
-
                     const solidityMatch =
                         text.match(
                             /(?:\/\/ SPDX-License-Identifier:[\s\S]*?)?pragma\s+solidity[\s\S]*?contract\s+\w+[\s\S]*/
@@ -1107,24 +1094,30 @@ The corrected contract may be inside a Solidity code block or returned as plain 
 
                 if (!fixedCode) {
                     throw new Error(
-                        "Gemini returned a response but no corrected Solidity contract could be extracted."
+                        "Gemini returned no corrected Solidity contract."
                     );
                 }
 
                 console.log(
-                    `Gemini success: ${model}`
+                    "Verifying Gemini corrected Solidity..."
+                );
+
+                await compileSolidity(
+                    fixedCode
+                );
+
+                console.log(
+                    `Gemini security fix succeeded using ${model}`
                 );
 
                 return {
                     explanation:
                         text,
-
                     fixedCode:
                         fixedCode
                 };
 
             } catch (error) {
-
                 lastError = error;
 
                 if (timeoutId) {
@@ -1133,28 +1126,31 @@ The corrected contract may be inside a Solidity code block or returned as plain 
                     );
                 }
 
-                console.error(
-                    `Gemini failed (${model}, attempt ${attempt}):`,
-                    error.message
-                );
-
                 const message =
                     String(
-                        error.message ||
+                        error?.message ||
                         ""
-                    ).toLowerCase();
+                    );
+
+                const lowerMessage =
+                    message.toLowerCase();
+
+                console.error(
+                    `Gemini security fix failed (${model}, attempt ${attempt}/2):`,
+                    message
+                );
 
                 const permanentError =
-                    message.includes(
+                    lowerMessage.includes(
                         "api key"
                     ) ||
-                    message.includes(
+                    lowerMessage.includes(
                         "authentication"
                     ) ||
-                    message.includes(
+                    lowerMessage.includes(
                         "permission denied"
                     ) ||
-                    message.includes(
+                    lowerMessage.includes(
                         "invalid argument"
                     );
 
@@ -1162,18 +1158,72 @@ The corrected contract may be inside a Solidity code block or returned as plain 
                     break;
                 }
 
-                if (attempt === 1) {
+                const retryableError =
+                    lowerMessage.includes(
+                        "503"
+                    ) ||
+                    lowerMessage.includes(
+                        "service unavailable"
+                    ) ||
+                    lowerMessage.includes(
+                        "high demand"
+                    ) ||
+                    lowerMessage.includes(
+                        "429"
+                    ) ||
+                    lowerMessage.includes(
+                        "rate limit"
+                    ) ||
+                    lowerMessage.includes(
+                        "500"
+                    ) ||
+                    lowerMessage.includes(
+                        "502"
+                    ) ||
+                    lowerMessage.includes(
+                        "504"
+                    ) ||
+                    lowerMessage.includes(
+                        "timeout"
+                    ) ||
+                    lowerMessage.includes(
+                        "temporarily unavailable"
+                    );
+
+                if (
+                    retryableError &&
+                    attempt < 2
+                ) {
+                    const delay =
+                        retryDelays[
+                            attempt - 1
+                        ] || 5000;
+
+                    console.log(
+                        `Temporary Gemini error. Retrying in ${delay}ms...`
+                    );
 
                     await new Promise(
                         (resolve) =>
                             setTimeout(
                                 resolve,
-                                delays[
-                                    Math.min(
-                                        modelIndex,
-                                        delays.length - 1
-                                    )
-                                ]
+                                delay
+                            )
+                    );
+
+                    continue;
+                }
+
+                if (attempt < 2) {
+                    console.log(
+                        "Retrying Gemini security fix..."
+                    );
+
+                    await new Promise(
+                        (resolve) =>
+                            setTimeout(
+                                resolve,
+                                2000
                             )
                     );
                 }
@@ -1182,7 +1232,7 @@ The corrected contract may be inside a Solidity code block or returned as plain 
     }
 
     throw new Error(
-        `All Gemini models failed. Last error: ${
+        `All Gemini security-fix attempts failed. Last error: ${
             lastError?.message ||
             "Unknown error"
         }`
