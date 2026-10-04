@@ -907,14 +907,13 @@ const securityScore = Math.max(
         // =================================================
 
         if (
-            result.fixedCode
-        ) {
+                result.fixedCode
+            ) {
+                checkSpace(45);
 
-            addPage();
-
-            addHeading(
-                "AI Generated Fix"
-            );
+                addHeading(
+                    "AI Generated Fix"
+                );
 
             addParagraph(
                 "AI-generated remediation proposal. The corrected contract was independently re-analyzed using Slither.",
@@ -935,7 +934,7 @@ const securityScore = Math.max(
                         y >
                         pageHeight - 25
                     ) {
-                        addPage();
+                        checkSpace(45);
 
                         addHeading(
                             "AI Generated Fix - Continued"
@@ -970,9 +969,9 @@ const securityScore = Math.max(
                     );
 
                     pdf.setTextColor(
-                        255,
-                        255,
-                        255
+                        17,
+                        24,
+                        39
                     );
 
                     pdf.text(
@@ -999,14 +998,13 @@ const securityScore = Math.max(
         // =================================================
 
         if (
-            result.reanalysis
-        ) {
+                result.reanalysis
+            ) {
+                checkSpace(45);
 
-            addPage();
-
-            addHeading(
-                "Re-Analysis Results"
-            );
+                addHeading(
+                    "Re-Analysis Results"
+                );
 
             checkSpace(25);
 
@@ -1166,7 +1164,7 @@ const securityScore = Math.max(
         // DISCLAIMER
         // =================================================
 
-        addPage();
+        checkSpace(35);
 
         addHeading(
             "Disclaimer"
@@ -1257,21 +1255,14 @@ const securityScore = Math.max(
         );
     }
 };
-
-
-    // =====================================================
-    // UI
-    // =====================================================
-
+// =====================================================
+// UI
+// =====================================================
     return (
         <div className="app">
-
             {/* HEADER */}
-
             <header className="header">
-
                 <div className="header-inner">
-
                     <div className="header-logo">
                         <div className="header-logo-card">
                             <img
@@ -1280,26 +1271,20 @@ const securityScore = Math.max(
                             />
                         </div>
                     </div>
-
                     <div className="header-title">
                         <h1>
                             Smart Contract FixGPT
                         </h1>
-
                         <p>
                             AI-powered Solidity vulnerability detection and remediation
                         </p>
                     </div>
-
                     <div className="header-badge">
                         Web3 Security • AI Analysis
                     </div>
-
                 </div>
-
             </header>
-
-
+            
             {/* MAIN */}
 
             <main className="container">
