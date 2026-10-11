@@ -250,13 +250,6 @@ const findingGuidance = {
         resolution:
             "Review the affected condition and test values immediately below, at, and above the intended boundary."
     },
-    "divide-before-multiply": {
-        title: "Divide Before Multiply",
-        recommendation:
-            "Check whether division truncation causes an unintended loss of precision.",
-        resolution:
-            "Reorder arithmetic where safe, document rounding behavior, and add tests for small inputs and boundary cases."
-    },
     "immutable-states": {
         title: "Immutable State Optimization",
         recommendation:
@@ -277,6 +270,96 @@ const findingGuidance = {
             "Use consistent Solidity naming conventions to improve code readability and maintainability.",
         resolution:
             "Rename identifiers to follow the project's naming conventions and update references and tests."
+    },
+        "reentrancy-benign": {
+        title: "Benign Reentrancy",
+        recommendation:
+            "Review whether re-entry can affect shared state or violate expected execution order.",
+        resolution:
+            "Inspect external calls and state updates, then add regression tests for nested calls and failure paths."
+    },
+
+    "reentrancy-events": {
+        title: "Reentrancy and Event Ordering",
+        recommendation:
+            "Check whether an external call can cause events to be emitted in a misleading order.",
+        resolution:
+            "Review event emission relative to state changes and external interactions. Add tests that verify event order."
+    },
+
+    "uninitialized-state": {
+        title: "Uninitialized State Variable",
+        recommendation:
+            "Check whether the state variable can be read before receiving its intended value.",
+        resolution:
+            "Initialize the variable during declaration, construction, or a properly authorized setup function, as appropriate."
+    },
+
+    "uninitialized-local": {
+        title: "Uninitialized Local Variable",
+        recommendation:
+            "Check whether the local variable may be used before receiving a valid value.",
+        resolution:
+            "Initialize the variable explicitly and test all control-flow paths to ensure it is assigned before use."
+    },
+
+    "shadowing-state": {
+        title: "State Variable Shadowing",
+        recommendation:
+            "Review whether a declaration shadows another state variable and causes confusing or unintended behavior.",
+        resolution:
+            "Rename the shadowing variable and verify that assignments and reads refer to the intended declaration."
+    },
+
+    "shadowing-local": {
+        title: "Local Variable Shadowing",
+        recommendation:
+            "Check whether a local declaration hides another variable and makes the code harder to reason about.",
+        resolution:
+            "Use distinct variable names and test the affected logic after updating references."
+    },
+    "calls-loop": {
+        title: "External Calls in a Loop",
+        recommendation:
+            "Review external calls inside loops for gas-cost and failure risks as the number of iterations grows.",
+        resolution:
+            "Bound loop size where practical, consider pull-based operations, and test worst-case gas usage and failure handling."
+    },
+    "costly-loop": {
+        title: "Potentially Costly Loop",
+        recommendation:
+            "Determine whether loop execution can become too expensive as the collection or input grows.",
+        resolution:
+            "Measure gas usage for realistic worst-case inputs and consider bounded processing or pagination where appropriate."
+    },
+    "incorrect-modifier": {
+        title: "Incorrect Modifier Usage",
+        recommendation:
+            "Verify that function modifiers enforce the intended authorization and execution conditions.",
+        resolution:
+            "Review modifier logic and ordering, then test authorized, unauthorized, and boundary cases."
+    },
+    "missing-inheritance": {
+        title: "Missing Inheritance",
+        recommendation:
+            "Review whether the contract is missing intended inherited behavior or interface implementation.",
+        resolution:
+            "Compare the contract against its design and interfaces, add only the required inheritance, and rerun compilation and tests."
+    },
+
+    "array-length-out-of-bounds": {
+        title: "Array Bounds Risk",
+        recommendation:
+            "Check whether array indices and length assumptions are valid for every possible input.",
+        resolution:
+            "Validate index boundaries and test empty arrays, first and last valid indices, and out-of-range inputs."
+    },
+    "write-after-write": {
+        title: "Redundant State Write",
+        recommendation:
+            "Review repeated writes to the same state variable to determine whether earlier writes are unnecessary.",
+        resolution:
+            "Remove redundant writes only after confirming the intended behavior, then rerun tests and compare gas usage."
     }
 };
 
@@ -474,6 +557,7 @@ const trustStatus =
     // DOWNLOAD SECURITY REPORT
     // =====================================================
 
+
 const downloadExcelReport = () => {
     try {
         if (!result) {
@@ -485,46 +569,154 @@ const downloadExcelReport = () => {
         const resolved = result.reanalysis?.resolved || [];
         const remaining = result.reanalysis?.remaining || [];
 
-        const findingRows = findings.map((finding) => ({
-            Severity: finding.impact || finding.severity || "N/A",
-            Title: finding.name || finding.title || "Security Finding",
-            Confidence: finding.confidence || "N/A",
-            Description: finding.description || "N/A",
-            Recommendation: finding.recommendation || "Review the finding details."
-        }));
+        // Convert a finding into a readable name.
+        const getFindingName = (item) => {
+            if (typeof item === "string") return item;
 
-        const reanalysisRows = [
-            ...resolved.map((item) => ({
-                Status: "Resolved",
-                Finding: typeof item === "string"
-                    ? item
-                    : item.name || item.title || JSON.stringify(item)
-            })),
-            ...remaining.map((item) => ({
-                Status: "Remaining",
-                Finding: typeof item === "string"
-                    ? item
-                    : item.name || item.title || JSON.stringify(item)
-            }))
-        ];
+            return (
+                item?.name ||
+                item?.title ||
+                item?.check ||
+                JSON.stringify(item)
+            );
+        };
 
+        // Sheet 1: Assessment Summary
         const summaryRows = [
-            { Metric: "Security Score", Value: securityScore },
-            { Metric: "Trust Score", Value: trustScore },
+            { Metric: "Report", Value: "Smart Contract FixGPT Security Assessment" },
+            { Metric: "Contract File", Value: fileName || "Pasted Solidity Contract" },
+            { Metric: "Security Score", Value: `${securityScore}/100` },
+            { Metric: "Trust Score", Value: `${trustScore}/100` },
+            { Metric: "Assessment Status", Value: trustStatus },
+            { Metric: "Findings Before", Value: result.original?.count ?? findings.length },
+            { Metric: "Findings After", Value: result.reanalysis?.count ?? remaining.length },
             { Metric: "High Findings", Value: highCount },
             { Metric: "Medium Findings", Value: mediumCount },
             { Metric: "Low Findings", Value: lowCount },
             { Metric: "Informational Findings", Value: infoCount },
             { Metric: "Optimization Findings", Value: optimizationCount },
             { Metric: "Resolved Findings", Value: resolved.length },
-            { Metric: "Remaining Findings", Value: remaining.length }
+            { Metric: "Remaining Findings", Value: remaining.length },
+            { Metric: "Generated On", Value: new Date().toLocaleString() },
+            {
+                Metric: "Disclaimer",
+                Value: "AI-generated fixes require manual review, testing, and independent validation. This report does not guarantee contract security."
+            }
         ];
 
+        // Sheet 2: Detailed Security Findings
+        const findingRows = findings.map((finding, index) => {
+            const details = getFindingDetails(finding);
+
+            return {
+                "No.": index + 1,
+                Severity: finding.severity || finding.impact || "N/A",
+                "Finding Name": details.title || finding.name || "Security Finding",
+                Detector: finding.name || "N/A",
+                Confidence: finding.confidence || "N/A",
+                Function: finding.function || "N/A",
+                "Source Lines": Array.isArray(finding.lines)
+                    ? [...new Set(finding.lines)].join(", ")
+                    : "N/A",
+                Description: finding.description || "N/A",
+                Recommendation: details.recommendation || "Review the finding manually.",
+                "How to Resolve": details.resolution || "Investigate and test an appropriate mitigation.",
+                Reference: finding.reference || "N/A"
+            };
+        });
+
+        // Sheet 3: Re-Analysis
+        const reanalysisRows = [
+            ...resolved.map((item) => ({
+                Status: "Resolved",
+                Finding: getFindingName(item),
+                Details: "Reported as resolved by the re-analysis process."
+            })),
+            ...remaining.map((item) => ({
+                Status: "Remaining",
+                Finding: getFindingName(item),
+                Details: "Requires review; confirm the issue and its severity."
+            }))
+        ];
+
+        if (reanalysisRows.length === 0) {
+            reanalysisRows.push({
+                Status: "No re-analysis findings",
+                Finding: "No resolved or remaining findings were returned.",
+                Details: "Check the analysis results to confirm the assessment completed successfully."
+            });
+        }
+
+        // Sheet 4: AI Analysis and Generated Fix
+        const aiRows = [
+            {
+                Section: "AI Security Analysis",
+                Content: result.ai?.explanation || "No AI explanation was returned."
+            },
+            {
+                Section: "AI Syntax Correction Explanation",
+                Content: result.syntaxFix?.explanation || "No syntax correction explanation was returned."
+            },
+            {
+                Section: "AI Generated Fixed Solidity Code",
+                Content: result.fixedCode || "No fixed Solidity code was returned."
+            },
+            {
+                Section: "Syntax-Corrected Solidity Code",
+                Content: result.syntaxFix?.fixedCode || "No syntax-corrected code was returned."
+            }
+        ];
+
+        // Create workbook and sheets.
         const workbook = XLSX.utils.book_new();
 
+        const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
         const findingsSheet = XLSX.utils.json_to_sheet(findingRows);
         const reanalysisSheet = XLSX.utils.json_to_sheet(reanalysisRows);
-        const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+        const aiSheet = XLSX.utils.json_to_sheet(aiRows);
+
+        // Set readable column widths.
+        summarySheet["!cols"] = [
+            { wch: 30 },
+            { wch: 90 }
+        ];
+
+        findingsSheet["!cols"] = [
+            { wch: 7 },
+            { wch: 16 },
+            { wch: 30 },
+            { wch: 25 },
+            { wch: 15 },
+            { wch: 24 },
+            { wch: 18 },
+            { wch: 55 },
+            { wch: 55 },
+            { wch: 55 },
+            { wch: 35 }
+        ];
+
+        reanalysisSheet["!cols"] = [
+            { wch: 24 },
+            { wch: 40 },
+            { wch: 65 }
+        ];
+
+        aiSheet["!cols"] = [
+            { wch: 35 },
+            { wch: 100 }
+        ];
+
+        // Enable filters and freeze the header row.
+        [findingsSheet, reanalysisSheet, aiSheet].forEach((sheet) => {
+            if (sheet["!ref"]) {
+                sheet["!autofilter"] = { ref: sheet["!ref"] };
+                sheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+            }
+        });
+
+        XLSX.utils.book_append_sheet(
+            workbook, summarySheet, "Assessment Summary"
+        );
 
         XLSX.utils.book_append_sheet(
             workbook, findingsSheet, "Security Findings"
@@ -535,15 +727,19 @@ const downloadExcelReport = () => {
         );
 
         XLSX.utils.book_append_sheet(
-            workbook, summarySheet, "Assessment Summary"
+            workbook, aiSheet, "AI Analysis & Fix"
         );
 
-        XLSX.writeFile(workbook, "Smart_Contract_Security_Report.xlsx");
+        XLSX.writeFile(
+            workbook,
+            "Smart_Contract_FixGPT_Security_Report.xlsx"
+        );
     } catch (error) {
         console.error("Excel export failed:", error);
         alert("Could not export the Excel report. Check the browser console.");
     }
 };
+
  const downloadReport = () => {
     try {
         if (!result) {
