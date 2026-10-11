@@ -1,7 +1,7 @@
 import { useState } from "react";
 import jsPDF from "jspdf";
 import "./App.css";
-
+import * as XLSX from "xlsx";
 function App() {
     const [code, setCode] = useState("");
     const [result, setResult] = useState(null);
@@ -474,6 +474,76 @@ const trustStatus =
     // DOWNLOAD SECURITY REPORT
     // =====================================================
 
+const downloadExcelReport = () => {
+    try {
+        if (!result) {
+            alert("Please analyze a Solidity contract first.");
+            return;
+        }
+
+        const findings = result.original?.findings || [];
+        const resolved = result.reanalysis?.resolved || [];
+        const remaining = result.reanalysis?.remaining || [];
+
+        const findingRows = findings.map((finding) => ({
+            Severity: finding.impact || finding.severity || "N/A",
+            Title: finding.name || finding.title || "Security Finding",
+            Confidence: finding.confidence || "N/A",
+            Description: finding.description || "N/A",
+            Recommendation: finding.recommendation || "Review the finding details."
+        }));
+
+        const reanalysisRows = [
+            ...resolved.map((item) => ({
+                Status: "Resolved",
+                Finding: typeof item === "string"
+                    ? item
+                    : item.name || item.title || JSON.stringify(item)
+            })),
+            ...remaining.map((item) => ({
+                Status: "Remaining",
+                Finding: typeof item === "string"
+                    ? item
+                    : item.name || item.title || JSON.stringify(item)
+            }))
+        ];
+
+        const summaryRows = [
+            { Metric: "Security Score", Value: securityScore },
+            { Metric: "Trust Score", Value: trustScore },
+            { Metric: "High Findings", Value: highCount },
+            { Metric: "Medium Findings", Value: mediumCount },
+            { Metric: "Low Findings", Value: lowCount },
+            { Metric: "Informational Findings", Value: infoCount },
+            { Metric: "Optimization Findings", Value: optimizationCount },
+            { Metric: "Resolved Findings", Value: resolved.length },
+            { Metric: "Remaining Findings", Value: remaining.length }
+        ];
+
+        const workbook = XLSX.utils.book_new();
+
+        const findingsSheet = XLSX.utils.json_to_sheet(findingRows);
+        const reanalysisSheet = XLSX.utils.json_to_sheet(reanalysisRows);
+        const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+
+        XLSX.utils.book_append_sheet(
+            workbook, findingsSheet, "Security Findings"
+        );
+
+        XLSX.utils.book_append_sheet(
+            workbook, reanalysisSheet, "Re-Analysis"
+        );
+
+        XLSX.utils.book_append_sheet(
+            workbook, summarySheet, "Assessment Summary"
+        );
+
+        XLSX.writeFile(workbook, "Smart_Contract_Security_Report.xlsx");
+    } catch (error) {
+        console.error("Excel export failed:", error);
+        alert("Could not export the Excel report. Check the browser console.");
+    }
+};
  const downloadReport = () => {
     try {
         if (!result) {
@@ -1728,14 +1798,13 @@ const trustStatus =
                         >
                             Download Security Report
                         </button>
-
-
+                        <button onClick={downloadExcelReport}>
+                            Download Excel Report
+                        </button>
                         {/* FINDINGS */}
-
                         <h3>
-                             Security Findings
-                        </h3>
-
+                             Security Findings 
+                        </h3> 
                         {/* SYNTAX CORRECTION */}
 
 {result.syntaxFix && (
