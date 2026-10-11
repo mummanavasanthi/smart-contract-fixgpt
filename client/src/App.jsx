@@ -1786,21 +1786,24 @@ const downloadExcelReport = () => {
                             </div>
 
                         </div>
-
-
                         {/* DOWNLOAD REPORT */}
+                        
+                        <div className="report-buttons">
+                            <button
+                                className="report-button"
+                                onClick={downloadReport}
+                            >
+                                Download Security Report
+                            </button>
 
-                        <button
-                            className="report-button"
-                            onClick={
-                                downloadReport
-                            }
-                        >
-                            Download Security Report
-                        </button>
-                        <button onClick={downloadExcelReport}>
-                            Download Excel Report
-                        </button>
+                            <button
+                                className="report-button excel-button"
+                                onClick={downloadExcelReport}
+                            >
+                                Download Excel Report
+                            </button>
+                        </div>
+                           
                         {/* FINDINGS */}
                         <h3>
                              Security Findings 

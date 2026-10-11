@@ -1145,3 +1145,25 @@ pre {
 
     scrollbar-width: thin;
 }
+
+
+.report-buttons {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+}
+
+.report-buttons .report-button {
+    margin: 0;
+}
+
+.report-buttons .excel-button {
+    background-color: #2563eb;
+}
+
+.report-buttons .excel-button:hover {
+    background-color: #1d4ed8;
+}
