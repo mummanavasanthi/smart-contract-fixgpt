@@ -423,7 +423,45 @@ const securityScore = Math.max(
     10,
     Math.round(100 - weightedPenalty)
 );
-const trustScore = securityScore;
+const remainingFindings =
+    result?.reanalysis?.remaining || [];
+
+const resolvedFindings =
+    result?.reanalysis?.resolved || [];
+
+const originalCount = originalFindings.length;
+const remainingCount = remainingFindings.length;
+const resolvedCount = resolvedFindings.length;
+
+// Trust Score: separate from Security Score
+const resolutionRate =
+    originalCount > 0
+        ? resolvedCount / originalCount
+        : 0;
+
+const remainingPenalty =
+    remainingFindings.reduce((total, finding) => {
+        const severity = String(
+            finding?.impact || finding?.severity || ""
+        ).toLowerCase();
+
+        if (severity === "high") return total + 20;
+        if (severity === "medium") return total + 10;
+        if (severity === "low") return total + 5;
+
+        return total + 2;
+    }, 0);
+const trustScore = Math.max(
+    0,
+    Math.min(
+        100,
+        Math.round(
+            70 +
+            resolutionRate * 30 -
+            remainingPenalty
+        )
+    )
+);
 const trustStatus =
     highCount > 0
         ? "High Risk - Critical Review Required"
