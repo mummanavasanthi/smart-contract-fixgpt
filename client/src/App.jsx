@@ -143,92 +143,234 @@ function App() {
     };
 
     // Human-friendly finding guidance for the UI and PDF report.
-    const findingGuidance = {
-        "reentrancy-eth": {
-            title: "Reentrancy Vulnerability",
-            recommendation:
-                "Follow the checks-effects-interactions pattern and consider a reentrancy guard for externally callable withdrawal paths.",
-            resolution:
-                "Update critical state before making the external call, validate the amount, and use ReentrancyGuard where appropriate."
-        },
-        "reentrancy-no-eth": {
-            title: "Reentrancy Vulnerability",
-            recommendation:
-                "Prevent an external call from re-entering the contract while state is in an inconsistent state.",
-            resolution:
-                "Apply checks-effects-interactions and use a reentrancy guard when the function can be re-entered."
-        },
-        "arbitrary-send-eth": {
-            title: "Arbitrary ETH Transfer",
-            recommendation:
-                "Restrict the destination and amount so untrusted input cannot redirect contract funds.",
-            resolution:
-                "Use access-controlled withdrawal logic and validate recipient addresses and transfer amounts."
-        },
-        "controlled-delegatecall": {
-            title: "Input-Controlled Delegatecall",
-            recommendation:
-                "Do not allow untrusted users to select the delegatecall target.",
-            resolution:
-                "Whitelist trusted implementation addresses and protect upgrade or execution functions with strong access control."
-        },
-        "tx-origin": {
-            title: "tx.origin Authentication",
-            recommendation:
-                "Avoid tx.origin for authorization decisions.",
-            resolution:
-                "Use msg.sender or a role-based access-control mechanism instead of tx.origin."
-        },
-        "unchecked-lowlevel": {
-            title: "Unchecked Low-Level Call",
-            recommendation:
-                "Always validate the success flag returned by low-level calls.",
-            resolution:
-                "Capture the return value from call/delegatecall/send and revert or handle the failure explicitly."
-        },
-        "missing-zero-check": {
-            title: "Missing Zero-Address Check",
-            recommendation:
-                "Validate addresses before storing or using them.",
-            resolution:
-                "Reject address(0) for owners, recipients, implementations, and other critical address inputs."
-        },
-        "low-level-calls": {
-            title: "Low-Level Call Usage",
-            recommendation:
-                "Review low-level calls carefully because they bypass higher-level Solidity safety checks.",
-            resolution:
-                "Prefer safe abstractions when possible and explicitly validate return values and target addresses."
-        },
-        "timestamp": {
-            title: "Block Timestamp Dependence",
-            recommendation:
-                "Do not use block.timestamp as a source of strong randomness or precise time guarantees.",
-            resolution:
-                "Use timestamp only for coarse time-based logic and use an appropriate trusted mechanism for randomness."
-        },
-        "unprotected-upgrade": {
-            title: "Unprotected Upgrade",
-            recommendation:
-                "Protect upgrade operations with strict authorization.",
-            resolution:
-                "Use Ownable, AccessControl, or another explicit governance mechanism for upgrades."
-        }
-    };
+   
+const findingGuidance = {
+    "reentrancy-eth": {
+        title: "Reentrancy Vulnerability",
+        recommendation:
+            "Prevent external calls from re-entering a function before the contract has completed its state updates.",
+        resolution:
+            "Update balances and other critical state before external calls. Apply checks-effects-interactions and consider a reentrancy guard."
+    },
+    "reentrancy-no-eth": {
+        title: "Reentrancy Vulnerability",
+        recommendation:
+            "Prevent re-entry into functions that modify shared state during an external interaction.",
+        resolution:
+            "Update state before external calls and use a reentrancy guard where necessary. Test nested calls and failure paths."
+    },
+    "arbitrary-send-eth": {
+        title: "Arbitrary ETH Transfer",
+        recommendation:
+            "Ensure ETH can only be transferred to authorized destinations and in permitted amounts.",
+        resolution:
+            "Validate recipients and amounts, enforce appropriate authorization, and test unauthorized transfer attempts."
+    },
+    "tx-origin": {
+        title: "tx.origin Authentication",
+        recommendation:
+            "Do not use tx.origin to authenticate callers because intermediary contracts can exploit this trust relationship.",
+        resolution:
+            "Use msg.sender for direct caller authorization or an appropriate role-based access-control mechanism."
+    },
+    "divide-before-multiply": {
+        title: "Divide Before Multiply",
+        recommendation:
+            "Review the arithmetic order because integer division truncates fractional values before subsequent multiplication.",
+        resolution:
+            "Where mathematically appropriate, multiply before dividing, check for overflow and rounding effects, and add tests for small and boundary values."
+    },
+    "unchecked-lowlevel": {
+        title: "Unchecked Low-Level Call",
+        recommendation:
+            "Handle the success or failure of every low-level call explicitly.",
+        resolution:
+            "Capture the call's success flag, revert or handle failures safely, and test calls to contracts that revert or return unexpected data."
+    },
+    "low-level-calls": {
+        title: "Low-Level Call Usage",
+        recommendation:
+            "Review low-level calls for unsafe targets, unexpected return data, and unhandled failures.",
+        resolution:
+            "Validate the target, check the returned success flag, and prefer safer typed interfaces when practical."
+    },
+    "controlled-delegatecall": {
+        title: "Input-Controlled Delegatecall",
+        recommendation:
+            "Prevent untrusted users from choosing arbitrary delegatecall targets.",
+        resolution:
+            "Restrict targets to trusted implementations and enforce access control. Test storage and authorization boundaries."
+    },
+    "unchecked-transfer": {
+        title: "Unchecked Transfer",
+        recommendation:
+            "Ensure the result of a value transfer is handled correctly.",
+        resolution:
+            "Check the returned success value for low-level transfers and safely handle failure without leaving inconsistent state."
+    },
+    "timestamp": {
+        title: "Block Timestamp Dependence",
+        recommendation:
+            "Avoid relying on block timestamps for precise timing or secure randomness.",
+        resolution:
+            "Use timestamps only for suitable time-based conditions. Use a secure randomness mechanism if unpredictable values are required."
+    },
+    "weak-prng": {
+        title: "Weak Randomness",
+        recommendation:
+            "Do not use predictable blockchain values as security-sensitive randomness.",
+        resolution:
+            "Use an appropriate verifiable randomness solution for applications that depend on unpredictable outcomes."
+    },
+    "missing-zero-check": {
+        title: "Missing Zero-Address Check",
+        recommendation:
+            "Prevent critical addresses from being accidentally set to address(0).",
+        resolution:
+            "Validate address inputs before storing or using them, particularly owners, recipients, and implementation addresses."
+    },
+    "unprotected-upgrade": {
+        title: "Unprotected Upgrade",
+        recommendation:
+            "Restrict contract upgrades to explicitly authorized accounts or governance.",
+        resolution:
+            "Add suitable ownership or role-based authorization and test unauthorized upgrade attempts."
+    },
+    "suicidal": {
+        title: "Unprotected Contract Destruction",
+        recommendation:
+            "Prevent unauthorized callers from destroying the contract or triggering destructive operations.",
+        resolution:
+            "Review whether destruction is necessary and enforce strict authorization and relevant operational safeguards."
+    },
+    "incorrect-equality": {
+        title: "Incorrect Equality Check",
+        recommendation:
+            "Verify that equality conditions correctly represent the intended business logic and boundary cases.",
+        resolution:
+            "Review the affected condition and test values immediately below, at, and above the intended boundary."
+    },
+    "divide-before-multiply": {
+        title: "Divide Before Multiply",
+        recommendation:
+            "Check whether division truncation causes an unintended loss of precision.",
+        resolution:
+            "Reorder arithmetic where safe, document rounding behavior, and add tests for small inputs and boundary cases."
+    },
+    "immutable-states": {
+        title: "Immutable State Optimization",
+        recommendation:
+            "Consider making state variables immutable when they are assigned only during construction.",
+        resolution:
+            "Verify that the variable never needs to change after deployment, then declare it immutable and rerun compilation and tests."
+    },
+    "solc-version": {
+        title: "Solidity Compiler Version",
+        recommendation:
+            "Review the compiler-version warning and determine whether the selected version is affected by relevant known bugs.",
+        resolution:
+            "Consult the official Solidity bug list, choose an appropriate patched compiler version, and recompile and retest the contract."
+    },
+    "naming-convention": {
+        title: "Naming Convention",
+        recommendation:
+            "Use consistent Solidity naming conventions to improve code readability and maintainability.",
+        resolution:
+            "Rename identifiers to follow the project's naming conventions and update references and tests."
+    }
+};
 
-    const getFindingDetails = (finding) => {
-        return (
-            findingGuidance[finding?.name] || {
-                title: String(finding?.name || "Security Finding")
-                    .replace(/[-_]+/g, " ")
-                    .replace(/\b\w/g, (letter) => letter.toUpperCase()),
-                recommendation:
-                    "Review the detector description and restrict the affected behavior to trusted inputs and authorized callers.",
-                resolution:
-                    "Apply the mitigation suggested by the detector, retest the contract, and run an independent security review before deployment."
-            }
-        );
+const getFindingDetails = (finding) => {
+    const detector = String(finding?.name || "").toLowerCase();
+
+    if (findingGuidance[detector]) {
+        return findingGuidance[detector];
+    }
+
+    const title = detector
+        .replace(/[-_]+/g, " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+    // Detector-specific fallback: avoid presenting one generic
+    // recommendation as if it were a verified mitigation.
+    if (detector.includes("overflow") || detector.includes("underflow")) {
+        return {
+            title,
+            recommendation:
+                "Review the arithmetic operation and verify that its range and failure behavior match the intended logic.",
+            resolution:
+                "Validate input bounds, test extreme values, and use appropriate checked arithmetic or explicit safeguards."
+        };
+    }
+
+    if (detector.includes("access") || detector.includes("authorization")) {
+        return {
+            title,
+            recommendation:
+                "Verify that only authorized accounts can access the affected operation or resource.",
+            resolution:
+                "Enforce the intended caller permissions and test unauthorized access attempts."
+        };
+    }
+
+    if (detector.includes("delegatecall") || detector.includes("call")) {
+        return {
+            title,
+            recommendation:
+                "Review the external call target, authorization, return handling, and possible effects on contract state.",
+            resolution:
+                "Validate the target and caller permissions, handle failures explicitly, and test malicious or reverting callees."
+        };
+    }
+
+    if (detector.includes("oracle") || detector.includes("price")) {
+        return {
+            title,
+            recommendation:
+                "Validate the reliability, freshness, and expected range of externally supplied price data.",
+            resolution:
+                "Check data freshness and validity, handle unavailable feeds safely, and test stale or abnormal values."
+        };
+    }
+
+    if (detector.includes("loop") || detector.includes("dos") || detector.includes("denial")) {
+        return {
+            title,
+            recommendation:
+                "Check whether an operation can become too expensive or permanently blocked as input or state grows.",
+            resolution:
+                "Bound work where appropriate, test worst-case gas usage, and ensure one failing item cannot unnecessarily block unrelated operations."
+        };
+    }
+
+    if (detector.includes("timestamp")) {
+        return {
+            title,
+            recommendation:
+                "Determine whether the contract relies on block timestamps for a security-sensitive decision.",
+            resolution:
+                "Account for timestamp limitations and avoid using timestamps as secure randomness or exact timing guarantees."
+        };
+    }
+
+    if (detector.includes("reentrancy")) {
+        return {
+            title,
+            recommendation:
+                "Review external interactions for possible re-entry before state changes are complete.",
+            resolution:
+                "Apply checks-effects-interactions, update state before external calls, and consider a reentrancy guard."
+        };
+    }
+
+    return {
+        title: title || "Security Finding",
+        recommendation:
+            `Review the specific Slither detector "${detector}" and determine its impact on this contract before selecting a mitigation.`,
+        resolution:
+            "Inspect the reported source lines and detector documentation, implement a mitigation appropriate to the actual code, and rerun compilation, tests, and security analysis."
     };
+};
 
 
     const originalFindings =
@@ -281,9 +423,15 @@ const securityScore = Math.max(
     10,
     Math.round(100 - weightedPenalty)
 );
-
-
-
+const trustScore = securityScore;
+const trustStatus =
+    highCount > 0
+        ? "High Risk - Critical Review Required"
+        : mediumCount > 0
+        ? "Needs Review - Medium Findings"
+        : lowCount > 0
+        ? "Review Recommended - Low Findings"
+        : "No High, Medium, or Low Findings Detected";
     // =====================================================
     // DOWNLOAD SECURITY REPORT
     // =====================================================
@@ -1402,17 +1550,21 @@ const securityScore = Math.max(
                                 </div>
                             </div>
 
-                            <div className="score-content">
-                                <span className="eyebrow">Security Assessment</span>
-                                <h3>
-                                    Security Score
-                                </h3>
-
-                                <p>
-                                    Project-defined score based on weighted Slither findings.
-                                    Higher-risk findings reduce the score more heavily.
-                                </p>
-                            </div>
+                            
+                        <div className="score-content">
+                            <span className="eyebrow">Security Assessment</span>
+                            <h3>Security Score</h3>
+                            <p>
+                                Project-defined score based on weighted Slither findings.
+                                Higher-risk findings reduce the score more heavily.
+                            </p>
+                            <p>
+                                <strong>Trust Score:</strong> {trustScore}/100
+                            </p>
+                            <p>
+                                <strong>Status:</strong> {trustStatus}
+                            </p>
+                        </div>
 
                         <div className="score-legend">
                             <span><b>{highCount}</b> High</span>
@@ -1697,8 +1849,6 @@ const securityScore = Math.max(
                                     </div>
                                 )
                         }
-
-
                         {/* AI ANALYSIS */}
 
                         {
@@ -1707,7 +1857,6 @@ const securityScore = Math.max(
                                 <section
                                     className="ai-section"
                                 >
-
                                     <h2>
                                         AI Security Analysis
                                     </h2>
@@ -1728,10 +1877,7 @@ const securityScore = Math.max(
                                 </section>
                             )
                         }
-
-
                         {/* AI FIX */}
-
                         {
                             result.fixedCode && (
 
@@ -1746,7 +1892,6 @@ const securityScore = Math.max(
                                         <h2>
                                             AI Generated Fix
                                         </h2>
-
                                         <button
                                             className="copy-button"
                                             onClick={
@@ -1767,8 +1912,6 @@ const securityScore = Math.max(
                                 </section>
                             )
                         }
-
-
                         {/* RE-ANALYSIS */}
 
                         {
@@ -1777,19 +1920,15 @@ const securityScore = Math.max(
                                 <section
                                     className="reanalysis"
                                 >
-
                                     <h2>
                                         Re-Analysis
                                     </h2>
-
-
                                     {
                                         result
                                             .reanalysis
                                             .resolved
                                             ?.length > 0
                                             ? (
-
                                                 <p className="success">
                                                     ✅ Resolved:{" "}
                                                     {
@@ -1802,20 +1941,15 @@ const securityScore = Math.max(
 
                                             )
                                             : (
-
                                                 <p>
                                                     No vulnerabilities
                                                     were resolved.
                                                 </p>
                                             )
                                     }
-
-
                                     <h3>
                                         Remaining Findings
                                     </h3>
-
-
                                     {
                                         result
                                             .reanalysis
